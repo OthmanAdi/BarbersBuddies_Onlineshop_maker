@@ -1,0 +1,31 @@
+{
+  "projects": {
+    "default": "linkedinrecommendations-fa9cb",
+    "easycut": "easycut-2d3fa"
+  },
+  "targets": {
+    "linkedinrecommendations-fa9cb": {
+      "hosting": {
+        "othmanadi": [
+          "othmanadi"
+        ]
+      }
+    },
+    "easycut-2d3fa": {
+      "hosting": {
+        "easycut": [
+          "easycut-2d3fa"
+        ]
+      }
+    },
+    "linkedinrecommend": {
+      "hosting": {
+        "othmanadi": [
+          "linkedinrecommend"
+        ]
+      }
+    }
+  },
+  "etags": {},
+  "dataconnectEmulatorConfig": {}
+}

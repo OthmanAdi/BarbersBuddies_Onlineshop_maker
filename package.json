@@ -1,0 +1,95 @@
+{
+  "name": "barberbuddy",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@emoji-mart/data": "^1.2.1",
+    "@emoji-mart/react": "^1.1.1",
+    "@heroicons/react": "^2.1.4",
+    "@react-buddy/ide-toolbox": "^2.4.0",
+    "@stripe/react-stripe-js": "^2.7.3",
+    "@stripe/stripe-js": "^4.1.0",
+    "@tailwindcss/container-queries": "^0.1.1",
+    "@tanstack/react-virtual": "^3.10.9",
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^13.5.0",
+    "@tinymce/tinymce-react": "^5.1.1",
+    "@tremor/react": "^3.18.3",
+    "autoprefixer": "^10.4.19",
+    "cally": "^0.7.2",
+    "canvas-confetti": "^1.9.3",
+    "country-flag-icons": "^1.5.18",
+    "daisyui": "^4.12.10",
+    "date-fns": "^3.6.0",
+    "dnd-kit": "^0.0.2",
+    "dompurify": "^3.0.6",
+    "firebase": "^10.12.3",
+    "firebase-functions": "^6.2.0",
+    "form-data": "^4.0.1",
+    "framer-motion": "^11.11.11",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4",
+    "leaflet": "^1.9.4",
+    "lodash": "^4.17.21",
+    "lucide-react": "^0.400.0",
+    "mailgun.js": "^10.3.0",
+    "nanoid": "^5.0.7",
+    "nodemailer": "^6.9.16",
+    "postcss": "^8.4.39",
+    "react": "^18.3.1",
+    "react-beautiful-dnd": "^13.1.1",
+    "react-color": "^2.19.3",
+    "react-confetti": "^6.1.0",
+    "react-datepicker": "^7.5.0",
+    "react-dom": "^18.3.1",
+    "react-dropzone": "^14.2.3",
+    "react-flagpack": "^2.0.6",
+    "react-hook-form": "^7.52.1",
+    "react-icons": "^5.2.1",
+    "react-image-crop": "^11.0.7",
+    "react-international-phone": "^4.3.0",
+    "react-intersection-observer": "^9.13.1",
+    "react-leaflet-cluster": "^2.1.0",
+    "react-phone-input-2": "^2.15.1",
+    "react-responsive": "^10.0.0",
+    "react-router-dom": "^6.24.1",
+    "react-scripts": "5.0.1",
+    "react-slick": "^0.30.2",
+    "recharts": "^2.13.3",
+    "slick-carousel": "^1.8.1",
+    "sweetalert2": "^11.12.1",
+    "swiper": "^11.1.4",
+    "tailwindcss": "^3.4.4",
+    "web-vitals": "^2.1.4",
+    "zustand": "^4.5.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "dev": "BROWSER=none react-scripts start"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "esm": "^3.2.25"
+  }
+}

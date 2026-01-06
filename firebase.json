@@ -1,0 +1,103 @@
+{
+  "hosting": [
+    {
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-ancestors * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * 'unsafe-inline' 'unsafe-eval' data: blob:; media-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' data: blob:; style-src * 'unsafe-inline' 'unsafe-eval' data: blob:;"
+            },
+            {
+              "key": "Cross-Origin-Embedder-Policy",
+              "value": "unsafe-none"
+            },
+            {
+              "key": "Cross-Origin-Opener-Policy",
+              "value": "unsafe-none"
+            },
+            {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+            },
+            {
+              "key": "Access-Control-Allow-Methods",
+              "value": "*"
+            },
+            {
+              "key": "Access-Control-Allow-Headers",
+              "value": "*"
+            }
+          ]
+        }
+      ],
+      "target": "othmanadi",
+      "public": "build",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "target": "easycut",
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Content-Security-Policy",
+              "value": "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-ancestors * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * 'unsafe-inline' 'unsafe-eval' data: blob:; media-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' data: blob:; style-src * 'unsafe-inline' 'unsafe-eval' data: blob:;"
+            },
+            {
+              "key": "Cross-Origin-Embedder-Policy",
+              "value": "unsafe-none"
+            },
+            {
+              "key": "Cross-Origin-Opener-Policy",
+              "value": "unsafe-none"
+            },
+            {
+              "key": "Access-Control-Allow-Origin",
+              "value": "*"
+            },
+            {
+              "key": "Access-Control-Allow-Methods",
+              "value": "*"
+            },
+            {
+              "key": "Access-Control-Allow-Headers",
+              "value": "*"
+            }
+          ]
+        }
+      ],
+      "public": "build",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ],
+"functions": {
+"source": "functions"
+},
+"firestore": {
+"rules": "firestore.rules",
+"indexes": "firestore.indexes.json"
+}
+}

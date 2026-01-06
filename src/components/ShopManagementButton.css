@@ -1,0 +1,135 @@
+/* ShopManagement.css */
+
+/* Button Styling */
+.shop-management-btn {
+    background: linear-gradient(135deg, var(--p) 0%, var(--pc) 100%);
+    color: var(--pc);
+    border: none;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+    font-weight: 600;
+    position: relative;
+    overflow: hidden;
+}
+
+.shop-management-btn::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background-color: rgba(255, 255, 255, 0.1);
+    transform: rotate(45deg);
+    animation: btn-shine 2.5s linear infinite;
+}
+
+@keyframes btn-shine {
+    from {
+        transform: rotate(45deg) translateX(-100%);
+    }
+    to {
+        transform: rotate(45deg) translateX(100%);
+    }
+}
+
+/* Shop Management Modal */
+.shop-management-modal {
+    --sm-primary: #0ea5e9; /* custom primary */
+    --sm-secondary: #a855f7; /* custom secondary */
+    --sm-accent: #f59e0b; /* custom accent */
+    --sm-primary-content: #ffffff;
+    --sm-base-content: var(--bc);
+    --sm-base-200: var(--b2);
+    --sm-base-300: var(--b3);
+}
+
+.shop-management-modal [class*="btn-primary"] {
+    background-color: var(--sm-primary) !important;
+    color: var(--sm-primary-content) !important;
+    border-color: var(--sm-primary) !important;
+}
+
+.shop-management-modal .shimmer {
+    background: linear-gradient(
+            90deg,
+            var(--sm-primary) 0%,
+            var(--sm-secondary) 50%,
+            var(--sm-primary) 100%
+    );
+    background-size: 200% auto;
+    color: transparent;
+    background-clip: text;
+    -webkit-background-clip: text;
+    animation: shimmer 2s linear infinite;
+}
+
+@keyframes shimmer {
+    to {
+        background-position: 200% center;
+    }
+}
+
+/* Loading Animation */
+.shop-loader {
+    position: relative;
+    width: 100px;
+    height: 100px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.scissors {
+    width: 80px;
+    height: 80px;
+    position: relative;
+    animation: cut 3s infinite ease-in-out;
+}
+
+.scissor-half {
+    position: absolute;
+    width: 50px;
+    height: 8px;
+    background-color: var(--sm-primary);
+    border-radius: 4px;
+    top: 36px;
+    transform-origin: 10px center;
+}
+
+.scissor-left {
+    left: 10px;
+    animation: scissorLeft 2s infinite ease-in-out;
+}
+
+.scissor-right {
+    left: 10px;
+    animation: scissorRight 2s infinite ease-in-out;
+}
+
+@keyframes scissorLeft {
+    0%, 100% { transform: rotate(-45deg); }
+    50% { transform: rotate(-10deg); }
+}
+
+@keyframes scissorRight {
+    0%, 100% { transform: rotate(45deg); }
+    50% { transform: rotate(10deg); }
+}
+
+@keyframes cut {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+/* Media Queries */
+@media (max-width: 768px) {
+    .shop-management-btn {
+        padding: 0.5rem 1rem;
+    }
+}
+
+/* Dark theme adjustments */
+[data-theme="dark"] .shop-management-modal {
+    --sm-primary: #38bdf8; /* lighter blue for dark mode */
+    --sm-primary-content: #1e293b;
+}

@@ -1,0 +1,16 @@
+@media (min-width: 768px) {
+    .messages-container {
+        height: calc(100vh - 180px); /* Adjust based on your header/input heights */
+    }
+
+    .fixed-chat-input {
+        position: fixed;
+        bottom: 0;
+        left: 320px; /* Sidebar width */
+        right: 0;
+        background: var(--b1);
+        border-top: 1px solid var(--b2);
+        padding: 1rem;
+        z-index: 10;
+    }
+}

@@ -1,0 +1,19 @@
+/* ImageCarousel.css */
+.slick-prev:before,
+.slick-next:before {
+    color: #333;
+}
+
+.slick-dots {
+    bottom: 10px;
+}
+
+.slick-dots li button:before {
+    font-size: 12px;
+    color: #fff;
+    opacity: 0.7;
+}
+
+.slick-dots li.slick-active button:before {
+    opacity: 1;
+}

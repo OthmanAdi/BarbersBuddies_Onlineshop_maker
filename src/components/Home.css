@@ -1,0 +1,59 @@
+.hero-background {
+    background-image: url('../img/SmallBarberImage.webp');
+}
+
+@media (min-width: 768px) {
+    .hero-background {
+        background-image: url('../img/MediumBarberImage.webp');
+    }
+}
+
+@media (min-width: 1024px) {
+    .hero-background {
+        background-image: url('../img/LargeBarberImage.webp');
+    }
+}
+
+/* Home.css */
+@keyframes gradient {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+.animate-gradient {
+    animation: gradient 15s ease infinite;
+    background-size: 400% 400%;
+}
+
+@keyframes float {
+    0% {
+        transform: translatey(0px);
+    }
+    50% {
+        transform: translatey(-20px);
+    }
+    100% {
+        transform: translatey(0px);
+    }
+}
+
+.animate-float {
+    animation: float 6s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.animate-shimmer {
+    animation: shimmer 2s infinite;
+}

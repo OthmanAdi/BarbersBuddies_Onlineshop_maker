@@ -1,0 +1,45 @@
+@keyframes scissorCut {
+    0% {
+        transform: scale(1) rotate(0deg);
+    }
+    50% {
+        transform: scale(1.2) rotate(-15deg);
+    }
+    100% {
+        transform: scale(1) rotate(0deg);
+    }
+}
+
+.scissors-loader {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.scissors-loader svg {
+    width: 64px;
+    height: 64px;
+    color: #fff;
+    animation: scissorCut 1.5s infinite ease-in-out;
+}
+
+.scissors-loader p {
+    color: #fff;
+    margin-top: 1rem;
+    font-size: 1.125rem;
+    font-weight: 500;
+}
+
+.loader-content {
+    text-align: center;
+    padding: 2rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 1rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}

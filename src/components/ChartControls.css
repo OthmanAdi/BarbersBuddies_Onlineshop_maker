@@ -1,0 +1,93 @@
+.chart-zoom-controls {
+    position: absolute;
+    left: 1rem;
+    top: 1rem;
+    display: flex;
+    gap: 0.5rem;
+    z-index: 10; /* Higher z-index to stay above chart elements */
+}
+
+.zoom-button {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(8px);
+    border: 1px solid hsl(var(--bc) / 0.1);
+    background: hsl(var(--b1) / 0.8);
+    color: hsl(var(--bc));
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.zoom-button svg {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 2px;
+}
+
+.zoom-button:hover {
+    background: hsl(var(--b2));
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.zoom-button:active {
+    transform: translateY(0px);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.zoom-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: hsl(var(--b3));
+    transform: none;
+    box-shadow: none;
+}
+
+.zoom-button:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+/* Add smooth animation for zoom transitions */
+.zoom-button svg {
+    transition: transform 0.2s ease;
+}
+
+.zoom-button:hover svg {
+    transform: scale(1.1);
+}
+
+.zoom-button:active svg {
+    transform: scale(0.9);
+}
+
+/* Make buttons more visible on light themes */
+@media (prefers-color-scheme: light) {
+    .zoom-button {
+        background: hsl(var(--b1) / 0.9);
+        border: 1px solid hsl(var(--bc) / 0.2);
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+    .zoom-button {
+        width: 2rem;
+        height: 2rem;
+    }
+
+    .zoom-button svg {
+        width: 0.875rem;
+        height: 0.875rem;
+    }
+}
+
+/* Ensure buttons stay above chart hover elements */
+.recharts-tooltip-wrapper {
+    z-index: 998;
+}

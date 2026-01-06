@@ -1,0 +1,67 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users: only own data
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Barber Shops: public read, owner write
+    match /barberShops/{shopId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && request.auth.uid == resource.data.ownerId;
+    }
+
+    // Bookings: customer or shop owner access
+    match /bookings/{bookingId} {
+      allow read: if request.auth != null &&
+        (request.auth.token.email == resource.data.userEmail ||
+         request.auth.uid == resource.data.shopOwnerId);
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null &&
+        (request.auth.token.email == resource.data.userEmail ||
+         request.auth.uid == resource.data.shopOwnerId);
+    }
+
+    // Messages: participants only
+    match /messages/{messageId} {
+      allow read, write: if request.auth != null &&
+        (request.auth.uid == resource.data.customerId ||
+         request.auth.uid == resource.data.shopId);
+      allow create: if request.auth != null;
+    }
+
+    // Ratings: public read, authenticated create, author update
+    match /ratings/{ratingId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && request.auth.uid == resource.data.userId;
+    }
+
+    // Notifications: own notifications only
+    match /notifications/{notificationId} {
+      allow read, write: if request.auth != null &&
+        request.auth.uid == resource.data.userId;
+    }
+
+    // Notification preferences: own settings only
+    match /notificationPreferences/{prefId} {
+      allow read, write: if request.auth != null && request.auth.uid == prefId;
+    }
+
+    // Shop names: read only for checking availability
+    match /shopNames/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Deleted accounts: write only (for cleanup trigger)
+    match /deletedAccounts/{userId} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if false;
+    }
+  }
+}

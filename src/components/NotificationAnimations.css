@@ -1,0 +1,57 @@
+@keyframes slide-out {
+    0% {
+        transform: translateX(0);
+        opacity: 1;
+        height: auto;
+        padding: 1rem;
+    }
+    100% {
+        transform: translateX(100%);
+        opacity: 0;
+        height: 0;
+        padding: 0;
+    }
+}
+
+@keyframes bounce-in {
+    0% {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    100% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.notification-item {
+    animation: bounce-in 0.3s ease-out;
+    transform-origin: top;
+}
+
+.notification-item.clearing {
+    animation: slide-out 0.5s ease-out forwards;
+}
+
+.notification-clear-btn {
+    position: relative;
+    overflow: hidden;
+}
+
+.notification-clear-btn:hover .sparkle-icon {
+    animation: rotate 1s infinite linear;
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.sparkle-icon {
+    display: inline-block;
+    transition: transform 0.3s ease;
+}

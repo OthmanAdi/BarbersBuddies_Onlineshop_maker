@@ -1,0 +1,23 @@
+@keyframes barberpole {
+    0% { background-position: 0 0; }
+    100% { background-position: 0 -200px; }
+}
+
+.animate-barberpole {
+    animation: barberpole 8s linear infinite;
+    background: repeating-linear-gradient(
+            to bottom,
+            #ef4444 0%,
+            #ef4444 33.33%,
+            #ffffff 33.33%,
+            #ffffff 66.66%,
+            #3b82f6 66.66%,
+            #3b82f6 100%
+    );
+    background-size: 100% 200px;
+    transform: translate3d(0, 0, 0);
+}
+
+.clip-cone {
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+}

@@ -1,0 +1,18 @@
+{
+    "indexes": [
+      {
+        "collectionGroup": "shopNames",
+        "queryScope": "COLLECTION",
+        "fields": [
+          {
+            "fieldPath": "nameSearch",
+            "order": "ASCENDING"
+          },
+          {
+            "fieldPath": "nameSearch",
+            "order": "ASCENDING"
+          }
+        ]
+      }
+    ]
+  }
