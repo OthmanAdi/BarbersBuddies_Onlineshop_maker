@@ -1765,16 +1765,19 @@ const Auth = () => {
             } else {
                 // Login flow with new alert system
                 try {
-                    // First check if user exists in Firestore
-                    const usersRef = collection(db, 'users');
-                    const q = query(usersRef, where('email', '==', email));
-                    const querySnapshot = await getDocs(q);
+                    // Demo accounts skip Firestore check (bypass permissions)
+                    if (!isDemoAccount(email)) {
+                        // First check if user exists in Firestore
+                        const usersRef = collection(db, 'users');
+                        const q = query(usersRef, where('email', '==', email));
+                        const querySnapshot = await getDocs(q);
 
-                    if (querySnapshot.empty) {
-                        setShowAlert(true);
-                        setAlertMessage(t.accountNotFound);
-                        setIsLoading(false);
-                        return;
+                        if (querySnapshot.empty) {
+                            setShowAlert(true);
+                            setAlertMessage(t.accountNotFound);
+                            setIsLoading(false);
+                            return;
+                        }
                     }
 
                     // Attempt login
