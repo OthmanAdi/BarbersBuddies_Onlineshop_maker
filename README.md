@@ -1,5 +1,7 @@
 <div align="center">
 
+// MINOR DOCUMENATION UPDATE FOR LEARNING PR FLOW
+
 # ✂️ BarbersBuddies
 
 ### The Complete Open-Source Booking Platform for Barbershops
