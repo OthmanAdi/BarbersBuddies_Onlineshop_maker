@@ -1,7 +1,7 @@
 // components/Footer.jsx
 import React from 'react';
 import {motion} from 'framer-motion';
-import {Award, Github, Instagram, Linkedin, Shield, Sparkles, Twitter} from 'lucide-react';
+import {Github, Instagram, Linkedin, Sparkles, Twitter} from 'lucide-react';
 
 const Footer = () => {
     const footerSections = {
@@ -47,10 +47,10 @@ const Footer = () => {
     };
 
     const stats = [
-        {number: "50K+", label: "Active Users"},
-        {number: "140+", label: "Countries"},
-        {number: "24/7", label: "Support"},
-        {number: "99.9%", label: "Uptime"}
+        {number: "100%", label: "Free & Open Source"},
+        {number: "MIT", label: "Licensed"},
+        {number: "React", label: "& Firebase"},
+        {number: "5min", label: "Setup Time"}
     ];
 
     const socialLinks = [
@@ -134,27 +134,11 @@ const Footer = () => {
                             </span>
                         </div>
                         <div className="flex items-center gap-4 text-xs text-base-content/60">
-                            <span>© 2024 BarberBuddy</span>
+                            <span>© 2026 BarbersBuddies</span>
                             <span>All rights reserved</span>
                         </div>
                     </motion.div>
 
-                    {/* Trust Badges */}
-                    <motion.div
-                        className="flex items-center gap-6"
-                        initial={{opacity: 0}}
-                        animate={{opacity: 1}}
-                        transition={{delay: 0.4}}
-                    >
-                        <div className="flex items-center gap-2 text-base-content/60">
-                            <Shield className="w-4 h-4"/>
-                            <span className="text-xs">SOC2 Certified</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-base-content/60">
-                            <Award className="w-4 h-4"/>
-                            <span className="text-xs">GDPR Compliant</span>
-                        </div>
-                    </motion.div>
 
                     {/* Social Links */}
                     <motion.div

@@ -69,7 +69,9 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "dev": "BROWSER=none react-scripts start"
+    "dev": "react-scripts start",
+    "seed": "node scripts/seed/index.js",
+    "seed:clean": "node scripts/seed/index.js clean"
   },
   "eslintConfig": {
     "extends": [

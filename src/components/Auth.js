@@ -62,6 +62,13 @@ const avatars = [
     `https://api.dicebear.com/7.x/avataaars/svg?seed=Olivia&backgroundColor=d1f4d7`,
 ];
 
+// Demo accounts bypass email verification (for seed data testing)
+const DEMO_EMAILS = [
+    'demo-owner@barbersbuddies.com',
+    'demo-customer@barbersbuddies.com'
+];
+const isDemoAccount = (email) => DEMO_EMAILS.includes(email?.toLowerCase());
+
 const AuthForm = ({
                       showTypeWarning,
                       setShowTypeWarning,
@@ -742,23 +749,15 @@ const AuthForm = ({
                                         spellCheck="false"
                                     >
                                         <>
-                                            <motion.form
-                                                initial={{y: 20}} // Slight upward animation
+                                            <motion.div
+                                                initial={{y: 20}}
                                                 animate={{y: 0}}
                                                 transition={{
                                                     duration: 0.3,
-                                                    delay: 0.2, // Synchronized with opacity animation
+                                                    delay: 0.2,
                                                     ease: "easeOut"
                                                 }}
-                                                onSubmit={handleSubmit}
                                                 className="space-y-6"
-                                                autoComplete="off"
-                                                spellCheck="false"
-                                                onFocus={(e) => {
-                                                    if (e.target.type === 'password') {
-                                                        e.target.setAttribute('autocomplete', 'new-password');
-                                                    }
-                                                }}
                                             >
                                                 <div className="grid md:grid-cols-2 gap-x-8 gap-y-6">
                                                     {isSignUp && (
@@ -969,7 +968,7 @@ transition-all duration-200 group"
                                                         </>
                                                     )}
                                                 </button>
-                                            </motion.form>
+                                            </motion.div>
 
                                             <motion.p
                                                 initial={{opacity: 0}}
@@ -1190,10 +1189,10 @@ const VerificationView = ({
                     const userCredential = await signInWithEmailAndPassword(auth, userCredentials.email, userCredentials.password);
                     const user = userCredential.user;
 
-                    // Now check if email is verified
+                    // Now check if email is verified (demo accounts bypass)
                     await user.reload();
-                    if (user.emailVerified) {
-                        // If verified, proceed to home
+                    if (user.emailVerified || isDemoAccount(user.email)) {
+                        // If verified (or demo account), proceed to home
                         navigate('/');
                     } else {
                         // If not verified, show alert
@@ -1457,22 +1456,39 @@ const Auth = () => {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
-                if (!user.emailVerified && user.providerData[0].providerId === 'password') {
+                // Demo accounts bypass email verification
+                if (!user.emailVerified && user.providerData[0].providerId === 'password' && !isDemoAccount(user.email)) {
                     setError(t.emailVerificationRequired);
                     await auth.signOut();
                     return;
                 }
                 console.log("User is signed in:", user);
+                console.log("User UID:", user.uid);
+                console.log("User email:", user.email);
+                console.log("Is demo account:", isDemoAccount(user.email));
 
                 // Get the user's document from Firestore to check userType
                 const userDoc = await getDoc(doc(db, 'users', user.uid));
+                console.log("User doc exists:", userDoc.exists());
+
                 if (userDoc.exists()) {
                     const userData = userDoc.data();
+                    console.log("User data:", userData);
                     // Navigate based on userType
                     if (userData.userType === 'customer') {
                         navigate('/shops');
                     } else {
                         navigate('/create-shop');
+                    }
+                } else {
+                    console.log("No user document found for UID:", user.uid);
+                    // For demo accounts without docs, navigate based on email
+                    if (isDemoAccount(user.email)) {
+                        if (user.email.includes('owner')) {
+                            navigate('/create-shop');
+                        } else {
+                            navigate('/shops');
+                        }
                     }
                 }
             } else {
@@ -1485,6 +1501,10 @@ const Auth = () => {
 
     const handleAuth = async (e) => {
         e.preventDefault();
+        console.log("=== handleAuth called ===");
+        console.log("Email:", email);
+        console.log("Password:", password ? "****" : "EMPTY!");
+        console.log("isSignUp:", isSignUp);
         setError('');
         try {
             if (isSignUp) {
@@ -1508,12 +1528,14 @@ const Auth = () => {
 
                 console.log("User created and profile updated successfully");
             } else {
-                console.log("Attempting to sign in user");
-                await signInWithEmailAndPassword(auth, email, password);
-                console.log("User signed in successfully");
+                console.log("Attempting to sign in user with:", email);
+                const result = await signInWithEmailAndPassword(auth, email, password);
+                console.log("User signed in successfully:", result.user.uid);
             }
         } catch (error) {
-            console.error("Authentication error:", error);
+            console.error("=== Authentication error ===");
+            console.error("Error code:", error.code);
+            console.error("Error message:", error.message);
             setError(error.message);
         }
     };

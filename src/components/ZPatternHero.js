@@ -157,11 +157,11 @@ const ZPatternHero = () => {
                 </h1>
             </motion.div>
 
-            {/* Top Right - Stats Only */}
+            {/* Top Right - Value Prop */}
             <div className="flex flex-col items-center">
-                <NumberAnimation value={2500}/>
+                <NumberAnimation value={5}/>
                 <div className="text-xl md:text-2xl text-gray-600 dark:text-gray-400 mt-2">
-                    Active Barbershops
+                    Minute Setup
                 </div>
             </div>
 
@@ -194,9 +194,9 @@ const ZPatternHero = () => {
                 transition={{duration: 0.8, delay: 0.3}}
                 className={`text-lg md:text-xl lg:text-2xl leading-relaxed text-left self-center ${isDark ? 'text-gray-300' : 'text-gray-600'}`}
             >
-                Join thousands of successful barbershops using BarberBuddies to streamline their operations,
-                delight customers, and grow their business with AI-powered scheduling, smart analytics,
-                and seamless payments.
+                Launch your own barbershop booking platform in minutes. BarbersBuddies gives you
+                everything you need: AI-powered scheduling, smart analytics, customer management,
+                and seamless payments — completely free and open source.
             </motion.p>
         </div>
         {/* Scroll Arrow - Now outside the grid */}

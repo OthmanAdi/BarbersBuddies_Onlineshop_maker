@@ -43,3 +43,5 @@ functions/*.json
 # Internal analysis files (not for public repo)
 _PLATFORM_ANALYSIS.md
 _SECURITY_AUDIT.md
+_DEMO_DATA_STUDY.md
+_*.md
