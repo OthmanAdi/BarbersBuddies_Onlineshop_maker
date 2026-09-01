@@ -11,6 +11,12 @@
 # production
 /build
 
+# local Firebase emulator state and logs
+/.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
 # misc
 .DS_Store
 npm-debug.log*
@@ -30,6 +36,12 @@ functions/*.json
 **/serviceAccount*.json
 **/*SDK*.json
 **/*credentials*.json
+
+# local agent indexes and host-specific graph markers
+/.codebase-memory/
+/graphify-out/.graphify_root
+/graphify-out/.graphify_python
+/graphify-out/cache/
 
 # IDE
 .idea/

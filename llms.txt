@@ -1,0 +1,43 @@
+# BarbersBuddies agent index
+
+Purpose: React and Firebase product for shop creation, public shop pages, booking, customer appointments, owner calendars, messaging, and subscription UI.
+
+Agent rules: AGENTS.md
+Durable state and continuation: .agents/memory/MEMORY.md
+Knowledge index: docs/knowledge/README.md
+Pinned baseline revision: 61132dc366e4e30edc9c8a69cde64b010cbb09c4
+
+Architecture:
+- docs/knowledge/00-system-architecture.md
+- src/index.js
+- src/App.js
+- src/firebase.js
+- functions/index.js
+- firebase.json
+
+Critical domains:
+- Booking and concurrency: docs/knowledge/10-booking-concurrency.md
+- Calendar and time: docs/knowledge/20-calendar-time-model.md
+- Firebase security and data: docs/knowledge/30-firebase-security-data.md
+- Store creation and auth: docs/knowledge/40-store-creation-auth.md
+- Frontend routes and UX: docs/knowledge/50-frontend-routes-ux.md
+- Build, tests, dependencies: docs/knowledge/60-build-tests-dependencies.md
+- Maintainability and history: docs/knowledge/70-maintainability-history.md
+
+Primary code:
+- Booking: src/components/BookNow.js
+- Customer mutations: src/components/AppointmentCard.js, src/components/AppointmentRescheduleModal.js, src/components/MyAppointments.js
+- Owner calendar: src/components/ShopCalendarTab.js, src/components/ClientManagementDashboard.js
+- Shop creation: src/components/CreateBarberShop.js, src/components/useBarberShopPersistence.js
+- Firebase Functions: functions/index.js
+- Rules and indexes: firestore.rules, firestore.indexes.json
+- Package boundaries: package.json, functions/package.json
+
+Navigation aids:
+- Graph: graphify-out/graph.json
+- Graph report: graphify-out/GRAPH_REPORT.md
+- Graph visual: graphify-out/graph.html
+
+Trust rule: current source and focused receipts outrank this index, knowledge artifacts, memory, and generated graphs. The baseline docs are stale where HEAD differs. Deployed Firebase state is unknown until authorized receipts prove it.
+
+Safety rule: offline and emulator-only by default. Never read or reproduce credentials. Never seed, clean, migrate, deploy, or access a live Firebase project without explicit authorization for the exact target and action.
