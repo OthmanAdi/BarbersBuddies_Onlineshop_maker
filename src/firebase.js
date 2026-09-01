@@ -1,9 +1,10 @@
-import {initializeApp} from 'firebase/app';
-import { getAnalytics, logEvent } from 'firebase/analytics';
+import {getApp, getApps, initializeApp} from 'firebase/app';
+import {getAnalytics, isSupported as isAnalyticsSupported, logEvent} from 'firebase/analytics';
 
 import {
     deleteUser,
     EmailAuthProvider,
+    connectAuthEmulator,
     getAuth,
     GoogleAuthProvider,
     onAuthStateChanged,
@@ -13,26 +14,54 @@ import {
     updateEmail,
     updateProfile
 } from 'firebase/auth';
-import {deleteObject, getStorage, ref} from 'firebase/storage';
-import {deleteDoc, doc, getDoc, getFirestore, serverTimestamp, setDoc, updateDoc} from 'firebase/firestore';
-import {getFunctions} from 'firebase/functions';
+import {connectStorageEmulator, deleteObject, getStorage, ref} from 'firebase/storage';
+import {
+    connectFirestoreEmulator,
+    deleteDoc,
+    doc,
+    getDoc,
+    getFirestore,
+    serverTimestamp,
+    setDoc,
+    updateDoc
+} from 'firebase/firestore';
+import {connectFunctionsEmulator, getFunctions} from 'firebase/functions';
+import {connectFirebaseEmulatorsOnce, resolveFirebaseRuntimeConfig} from './firebase-runtime';
 
-const firebaseConfig = {
-    apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
-    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-    appId: process.env.REACT_APP_FIREBASE_APP_ID,
-    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
-};
-
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+const firebaseRuntime = resolveFirebaseRuntimeConfig(process.env);
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseRuntime.config);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 const functions = getFunctions(app);
+
+if (firebaseRuntime.mode === 'emulator') {
+    connectFirebaseEmulatorsOnce(
+        app,
+        {auth, db, functions, storage},
+        {
+            connectAuthEmulator,
+            connectFirestoreEmulator,
+            connectFunctionsEmulator,
+            connectStorageEmulator
+        }
+    );
+}
+
+let analytics = null;
+
+if (firebaseRuntime.mode === 'live' && firebaseRuntime.config.measurementId) {
+    isAnalyticsSupported()
+        .then((supported) => {
+            if (supported) {
+                analytics = getAnalytics(app);
+            }
+        })
+        .catch(() => {
+            // Analytics is optional. Auth, Firestore, Functions, and Storage must still boot.
+        });
+}
+
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
     prompt: 'consent select_account',  // Changed this line to include consent
@@ -41,10 +70,14 @@ googleProvider.setCustomParameters({
 
 // Analytics event logging utility
 export const logAnalyticsEvent = (eventName, eventParams = {}) => {
+    if (!analytics) return false;
+
     try {
         logEvent(analytics, eventName, eventParams);
+        return true;
     } catch (error) {
         console.error('Analytics event logging failed:', error);
+        return false;
     }
 };
 
