@@ -18,6 +18,8 @@ if (nodeMajor !== 20 && nodeMajor !== 22) {
 }
 
 const admin = require('firebase-admin');
+const { sha256Canonical } = require('../../src/booking/domain');
+const { renderBookingEmail } = require('../../src/booking/email-templates');
 const { BookingError } = require('../../src/booking/errors');
 const { createBookingV2 } = require('../../src/booking/create');
 
@@ -232,12 +234,47 @@ test('authenticated create derives identity from actor and ignores spoofed autho
   assert.equal(Object.hasOwn(command, 'actorUid'), false);
   assert.equal(JSON.stringify(command).includes(key), false);
   assert.equal(JSON.stringify(command).includes('verified-customer'), false);
+  const bookingRef = db.collection('bookings').doc(result.booking.bookingId);
+  const events = await bookingRef.collection('events').get();
+  assert.equal(events.size, 1);
+  const event = events.docs[0].data();
+  const expectedEventId = sha256Canonical({
+    scope: 'booking-event:v2',
+    bookingId: result.booking.bookingId,
+    version: 1,
+    eventType: 'booking.created',
+  });
+  assert.equal(events.docs[0].id, expectedEventId);
+  assert.equal(event.eventId, expectedEventId);
+  assert.equal(event.bookingVersion, 1);
+  assert.equal(event.notificationSnapshot.startAt, result.booking.startAt);
+  assert.equal(event.notificationSnapshot.localStartTime, '09:00');
+  assert.equal(Object.hasOwn(event.notificationSnapshot.services[0], 'bufferBeforeMinutes'), false);
+  assert.equal(Object.hasOwn(event.notificationSnapshot.services[0], 'bufferAfterMinutes'), false);
+  const rendered = renderBookingEmail({
+    eventType: 'booking.created.customer-email',
+    snapshot: event.notificationSnapshot,
+  }, { recipientEmail: 'delivery@example.test' });
+  assert.match(rendered.text, /EUR 25\.00/u);
+  const notificationText = JSON.stringify(event.notificationSnapshot);
+  assert.equal(notificationText.includes('Emulator Customer'), false);
+  assert.equal(notificationText.includes('customer@example.test'), false);
+  assert.equal(notificationText.includes('+49 30 123456'), false);
   for (const outboxDocument of infrastructure.outbox.docs) {
     const outbox = outboxDocument.data();
+    assert.equal(outbox.eventId, expectedEventId);
+    assert.equal(outbox.bookingVersion, event.bookingVersion);
+    assert.equal(outbox.bookingId, event.bookingId);
+    assert.equal(outbox.commandId, event.commandId);
     assert.equal(Object.hasOwn(outbox, 'recipient'), false);
     assert.equal(Object.hasOwn(outbox, 'payload'), false);
+    assert.equal(Object.hasOwn(outbox, 'body'), false);
+    assert.equal(Object.hasOwn(outbox, 'provider'), false);
     assert.equal(Object.hasOwn(outbox, 'customerName'), false);
-    assert.equal(JSON.stringify(outbox).includes('customer@example.test'), false);
+    const serialized = JSON.stringify(outbox);
+    assert.equal(serialized.includes('Emulator Customer'), false);
+    assert.equal(serialized.includes('customer@example.test'), false);
+    assert.equal(serialized.includes('+49 30 123456'), false);
   }
 });
 

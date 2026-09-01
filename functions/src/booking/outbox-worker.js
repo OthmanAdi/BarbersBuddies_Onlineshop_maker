@@ -2,6 +2,7 @@
 
 const { createHash, randomUUID } = require('node:crypto');
 const { types: { isProxy } } = require('node:util');
+const { sha256Canonical } = require('./domain');
 
 const COLLECTION = 'bookingOutbox';
 const ACTIVE_STATES = new Set(['pending', 'retry', 'processing']);
@@ -16,7 +17,7 @@ const EVENT_CONTRACT = Object.freeze({
 });
 const BASE_FIELDS = Object.freeze([
   'schemaVersion', 'id', 'eventType', 'channel', 'audience', 'bookingId', 'shopId',
-  'bookingVersion', 'commandId', 'state', 'attempts', 'createdAt', 'updatedAt',
+  'bookingVersion', 'commandId', 'eventId', 'state', 'attempts', 'createdAt', 'updatedAt',
 ]);
 const STATE_FIELDS = Object.freeze({
   pending: Object.freeze(['availableAt']),
@@ -134,6 +135,7 @@ function validateSafeOutboxDocument(documentId, data) {
     !isNonEmptyString(data.bookingId) ||
     !isNonEmptyString(data.shopId) ||
     !isNonEmptyString(data.commandId) ||
+    !isNonEmptyString(data.eventId) ||
     !Number.isInteger(data.bookingVersion) ||
     data.bookingVersion < 1 ||
     !Number.isInteger(data.attempts) ||
@@ -141,6 +143,16 @@ function validateSafeOutboxDocument(documentId, data) {
     !Number.isFinite(asMillis(data.createdAt)) ||
     !Number.isFinite(asMillis(data.updatedAt))
   ) {
+    return false;
+  }
+  const eventType = data.eventType.replace(/\.(customer|shop)-email$/u, '');
+  const expectedEventId = sha256Canonical({
+    scope: 'booking-event:v2',
+    bookingId: data.bookingId,
+    version: data.bookingVersion,
+    eventType,
+  });
+  if (data.eventId !== expectedEventId) {
     return false;
   }
   if (data.state === 'pending') {
@@ -242,6 +254,7 @@ function buildResolverEnvelope(data) {
     bookingVersion: data.bookingVersion,
     shopId: data.shopId,
     commandId: data.commandId,
+    eventId: data.eventId,
   });
 }
 

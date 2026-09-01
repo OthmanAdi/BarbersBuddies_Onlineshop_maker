@@ -22,6 +22,8 @@ if (nodeMajor !== 20 && nodeMajor !== 22) {
 }
 
 const admin = require('firebase-admin');
+const { sha256Canonical } = require('../../src/booking/domain');
+const { renderBookingEmail } = require('../../src/booking/email-templates');
 const { BookingError } = require('../../src/booking/errors');
 const { createBookingV2 } = require('../../src/booking/create');
 const { cancelBookingV2, rescheduleBookingV2 } = require('../../src/booking/mutations');
@@ -207,6 +209,13 @@ async function expectBookingError(promise, code) {
 
 async function bookingData(bookingId) {
   return (await db.collection('bookings').doc(bookingId).get()).data();
+}
+
+async function bookingEvents(bookingId) {
+  const snapshot = await db.collection('bookings').doc(bookingId).collection('events').get();
+  return snapshot.docs
+    .map((document) => ({ id: document.id, ...document.data() }))
+    .sort((left, right) => left.bookingVersion - right.bookingVersion);
 }
 
 async function infrastructureCounts(shopId) {
@@ -501,6 +510,83 @@ test('commands and mutation outbox records contain hashes and routing metadata, 
       assert.equal(text.includes('Mutation Customer'), false);
       assert.equal(text.includes('+49 30 123456'), false);
     }
+  });
+
+test('created, rescheduled, and cancelled events retain immutable version-linked email snapshots',
+  async (t) => {
+    const shopId = await seedShop(t);
+    const created = await createBooking(shopId, '09:00');
+    const moved = await rescheduleBookingV2(rescheduleArgs(created, CUSTOMER, '10:30'));
+    const cancelled = await cancelBookingV2(cancelArgs({ booking: moved.booking }, CUSTOMER));
+    assert.equal(cancelled.booking.version, 3);
+
+    const events = await bookingEvents(created.booking.bookingId);
+    assert.equal(events.length, 3);
+    assert.deepEqual(events.map((event) => event.eventType), [
+      'booking.created',
+      'booking.rescheduled',
+      'booking.cancelled',
+    ]);
+    assert.deepEqual(events.map((event) => event.notificationSnapshot.startAt), [
+      '2026-09-07T07:00:00.000Z',
+      '2026-09-07T08:30:00.000Z',
+      '2026-09-07T08:30:00.000Z',
+    ]);
+    assert.deepEqual(events.map((event) => event.notificationSnapshot.localStartTime), [
+      '09:00', '10:30', '10:30',
+    ]);
+
+    const outbox = await fetchByShop('bookingOutbox', shopId);
+    assert.equal(outbox.size, 6);
+    for (const event of events) {
+      const expectedEventId = sha256Canonical({
+        scope: 'booking-event:v2',
+        bookingId: created.booking.bookingId,
+        version: event.bookingVersion,
+        eventType: event.eventType,
+      });
+      assert.equal(event.id, expectedEventId);
+      assert.equal(event.eventId, expectedEventId);
+      const linked = outbox.docs.filter((document) => document.data().eventId === event.eventId);
+      assert.equal(linked.length, 2);
+      assert.deepEqual(new Set(linked.map((document) => document.data().audience)),
+        new Set(['customer', 'shop']));
+      for (const document of linked) {
+        const data = document.data();
+        assert.equal(data.bookingId, event.bookingId);
+        assert.equal(data.bookingVersion, event.bookingVersion);
+        assert.equal(data.commandId, event.commandId);
+        const rendered = renderBookingEmail({
+          eventType: data.eventType,
+          snapshot: event.notificationSnapshot,
+        }, { recipientEmail: 'delivery@example.test' });
+        assert.match(rendered.text, /Mutation Test Shop/u);
+        assert.equal(Object.hasOwn(data, 'recipient'), false);
+        assert.equal(Object.hasOwn(data, 'body'), false);
+        assert.equal(Object.hasOwn(data, 'provider'), false);
+      }
+      const serialized = JSON.stringify(event.notificationSnapshot);
+      assert.equal(serialized.includes('Mutation Customer'), false);
+      assert.equal(serialized.includes(CUSTOMER.email), false);
+      assert.equal(serialized.includes('+49 30 123456'), false);
+    }
+  });
+
+test('cancellation fails write-free when the pre-cancel notification projection is malformed',
+  async (t) => {
+    const shopId = await seedShop(t);
+    const created = await createBooking(shopId, '09:15');
+    const bookingRef = db.collection('bookings').doc(created.booking.bookingId);
+    await bookingRef.update({ services: [] });
+    const before = await infrastructureCounts(shopId);
+    const eventsBefore = (await bookingEvents(created.booking.bookingId)).length;
+
+    await expectBookingError(cancelBookingV2(cancelArgs(created, CUSTOMER)),
+      'BOOKING_MIGRATION_REQUIRED');
+
+    assert.equal((await bookingData(created.booking.bookingId)).status, 'pending');
+    assert.deepEqual(await infrastructureCounts(shopId), before);
+    assert.equal((await bookingEvents(created.booking.bookingId)).length, eventsBefore);
   });
 
 test('reschedule conflict leaves source booking and occupancy unchanged', async (t) => {

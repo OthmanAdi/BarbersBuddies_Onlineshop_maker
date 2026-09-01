@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
+const { sha256Canonical } = require('../../src/booking/domain');
 
 const {
   EVENT_CONTRACT,
@@ -25,6 +26,7 @@ function validDocument(overrides = {}) {
     shopId: 'shop-1',
     bookingVersion: 1,
     commandId: 'command-1',
+    eventId: null,
     state: 'pending',
     attempts: 0,
     availableAt: new Date('2026-09-01T10:00:00.000Z'),
@@ -34,6 +36,17 @@ function validDocument(overrides = {}) {
   };
   if (Object.hasOwn(overrides, 'state') && overrides.state !== 'pending' && overrides.state !== 'retry') {
     delete document.availableAt;
+  }
+  if (!Object.hasOwn(overrides, 'eventId')) {
+    const linkedEventType = typeof document.eventType === 'string'
+      ? document.eventType.replace(/\.(customer|shop)-email$/u, '')
+      : 'booking.created';
+    document.eventId = sha256Canonical({
+      scope: 'booking-event:v2',
+      bookingId: document.bookingId,
+      version: document.bookingVersion,
+      eventType: linkedEventType,
+    });
   }
   return document;
 }
@@ -96,6 +109,8 @@ test('unknown events, mismatched audiences, channels, and extra payload fields f
   assert.equal(validateOutboxDocument('outbox-1', validDocument({ channel: 'push' })), false);
   assert.equal(validateOutboxDocument('outbox-1', validDocument({ recipient: 'private@example.test' })), false);
   assert.equal(validateOutboxDocument('different-id', validDocument()), false);
+  assert.equal(validateOutboxDocument('outbox-1', validDocument({ eventId: 'wrong-event' })), false);
+  assert.equal(validateOutboxDocument('outbox-1', validDocument({ bookingVersion: 2, eventId: 'stale-event' })), false);
 });
 
 test('state-specific timestamps and processing claim hashes are validated', () => {

@@ -16,6 +16,7 @@ if (nodeMajor !== 20 && nodeMajor !== 22) {
 }
 
 const admin = require('firebase-admin');
+const { sha256Canonical } = require('../../src/booking/domain');
 const {
   createBookingOutboxWorker,
   deterministicBackoffMs,
@@ -37,7 +38,7 @@ function uniqueId(prefix) {
 }
 
 function outboxFixture(id, now, overrides = {}) {
-  return {
+  const fixture = {
     schemaVersion: 2,
     id,
     eventType: 'booking.created.customer-email',
@@ -47,6 +48,7 @@ function outboxFixture(id, now, overrides = {}) {
     shopId: uniqueId('shop'),
     bookingVersion: 1,
     commandId: uniqueId('command'),
+    eventId: null,
     state: 'pending',
     attempts: 0,
     availableAt: admin.firestore.Timestamp.fromDate(now),
@@ -54,6 +56,15 @@ function outboxFixture(id, now, overrides = {}) {
     updatedAt: admin.firestore.Timestamp.fromDate(now),
     ...overrides,
   };
+  if (!Object.hasOwn(overrides, 'eventId')) {
+    fixture.eventId = sha256Canonical({
+      scope: 'booking-event:v2',
+      bookingId: fixture.bookingId,
+      version: fixture.bookingVersion,
+      eventType: fixture.eventType.replace(/\.(customer|shop)-email$/u, ''),
+    });
+  }
+  return fixture;
 }
 
 async function seedOutbox(now, overrides = {}) {
@@ -96,6 +107,7 @@ test('accepted provider response records accepted, never delivered, with only a 
   const clock = mutableClock('2026-09-01T10:00:00.000Z');
   const ref = await seedOutbox(clock.now());
   const providerCalls = [];
+  const resolverCalls = [];
   const logs = [];
   let transactionDepth = 0;
   const trackedDb = {
@@ -111,8 +123,9 @@ test('accepted provider response records accepted, never delivered, with only a 
   };
   const worker = createBookingOutboxWorker(workerOptions(clock, {
     db: trackedDb,
-    deliveryResolver: async () => {
+    deliveryResolver: async (outbox) => {
       assert.equal(transactionDepth, 0, 'resolver must execute outside a transaction');
+      resolverCalls.push(outbox);
       return { kind: 'deliver', delivery: { recipient: 'transient@example.test', body: 'secret body' } };
     },
     deliveryProvider: async (request) => {
@@ -125,6 +138,12 @@ test('accepted provider response records accepted, never delivered, with only a 
 
   assert.deepEqual(await worker.processOne(ref), { kind: 'accepted', attempt: 1 });
   assert.equal(providerCalls.length, 1);
+  assert.equal(resolverCalls.length, 1);
+  const source = (await ref.get()).data();
+  assert.equal(resolverCalls[0].eventId, source.eventId);
+  assert.equal(resolverCalls[0].bookingId, source.bookingId);
+  assert.equal(resolverCalls[0].bookingVersion, source.bookingVersion);
+  assert.equal(resolverCalls[0].commandId, source.commandId);
   assert.equal(providerCalls[0].idempotencyKey, `booking-v2-email:${ref.id}`);
   const stored = (await ref.get()).data();
   assert.equal(stored.state, 'accepted');

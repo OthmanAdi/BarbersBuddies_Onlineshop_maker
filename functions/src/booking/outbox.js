@@ -1,6 +1,10 @@
 'use strict';
 
 const { sha256Canonical } = require('./domain');
+const {
+  SNAPSHOT_SCHEMA_VERSION,
+  buildBookingNotificationSnapshot,
+} = require('./notification-snapshot');
 
 const OUTBOX_EVENT_TYPES = Object.freeze({
   CUSTOMER_EMAIL: 'booking.created.customer-email',
@@ -16,12 +20,35 @@ function createOutboxId({ bookingId, version, eventType }) {
   });
 }
 
+function buildAuthoritativeNotificationSnapshot({ shopName, service, interval }) {
+  return buildBookingNotificationSnapshot({
+    schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+    shopName,
+    services: service.snapshots.map((snapshot) => ({
+      id: snapshot.id,
+      name: snapshot.name,
+      durationMinutes: snapshot.durationMinutes,
+      priceMinor: snapshot.priceMinor,
+      currency: snapshot.currency,
+      minorUnitDigits: snapshot.minorUnitDigits,
+    })),
+    totalPriceMinor: service.totalPriceMinor,
+    currency: service.currency,
+    minorUnitDigits: service.minorUnitDigits,
+    localDate: interval.localDate,
+    localStartTime: interval.localStartTime,
+    timeZone: interval.timeZone,
+    startAt: new Date(interval.startAtEpochMs).toISOString(),
+  });
+}
+
 function buildCreateBookingOutbox({
   db,
   bookingId,
   bookingVersion,
   shopId,
   commandId,
+  eventId,
   serverTimestamp,
 }) {
   const definitions = [
@@ -49,6 +76,7 @@ function buildCreateBookingOutbox({
         shopId,
         bookingVersion,
         commandId,
+        eventId,
         state: 'pending',
         attempts: 0,
         availableAt: serverTimestamp,
@@ -61,6 +89,7 @@ function buildCreateBookingOutbox({
 
 module.exports = {
   OUTBOX_EVENT_TYPES,
+  buildAuthoritativeNotificationSnapshot,
   buildCreateBookingOutbox,
   createOutboxId,
 };

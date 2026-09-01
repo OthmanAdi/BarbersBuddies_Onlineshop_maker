@@ -8,7 +8,10 @@ const {
   validateIdempotencyKey,
 } = require('./domain');
 const { BookingError } = require('./errors');
-const { buildCreateBookingOutbox } = require('./outbox');
+const {
+  buildAuthoritativeNotificationSnapshot,
+  buildCreateBookingOutbox,
+} = require('./outbox');
 const {
   formatMinorAmount,
   normalizeCreateIntent,
@@ -281,12 +284,18 @@ async function createBookingV2({
       eventType: 'booking.created',
     });
     const eventRef = bookingRef.collection('events').doc(eventId);
+    const notificationSnapshot = buildAuthoritativeNotificationSnapshot({
+      shopName: authoritative.shop.name,
+      service: authoritative.service,
+      interval: authoritative.interval,
+    });
     const outbox = buildCreateBookingOutbox({
       db,
       bookingId: bookingRef.id,
       bookingVersion: booking.version,
       shopId: booking.shopId,
       commandId,
+      eventId,
       serverTimestamp,
     });
 
@@ -325,6 +334,7 @@ async function createBookingV2({
         uid: normalizedActor.uid,
       },
       commandId,
+      notificationSnapshot,
       occurredAt: serverTimestamp,
     });
     for (const write of outbox) {

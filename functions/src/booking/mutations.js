@@ -21,6 +21,7 @@ const {
   resolveAuthoritativeBooking,
 } = require('./services');
 const { resolveBookingInterval } = require('./time');
+const { buildAuthoritativeNotificationSnapshot } = require('./outbox');
 
 const ACTIVE_MUTATION_STATUSES = new Set(['pending', 'confirmed']);
 const IDENTIFIER_PATTERN = /^[^\u0000-\u001f\u007f/]{1,128}$/;
@@ -405,7 +406,7 @@ function successResult({ commandId, bookingId, booking }) {
 }
 
 function buildEvent({ bookingRef, eventType, booking, previousVersion, authorization, commandId,
-  serverTimestamp }) {
+  notificationSnapshot, serverTimestamp }) {
   const eventId = sha256Canonical({
     scope: 'booking-event:v2',
     bookingId: booking.bookingId,
@@ -427,12 +428,13 @@ function buildEvent({ bookingRef, eventType, booking, previousVersion, authoriza
         uid: authorization.actor.uid,
       },
       commandId,
+      notificationSnapshot,
       occurredAt: serverTimestamp,
     },
   });
 }
 
-function buildMutationOutbox({ db, operation, booking, commandId, serverTimestamp }) {
+function buildMutationOutbox({ db, operation, booking, commandId, eventId, serverTimestamp }) {
   const eventRoot = operation === 'cancel' ? 'booking.cancelled' : 'booking.rescheduled';
   const audiences = ['customer', 'shop'];
   return Object.freeze(audiences.map((audience) => {
@@ -455,6 +457,7 @@ function buildMutationOutbox({ db, operation, booking, commandId, serverTimestam
         shopId: booking.shopId,
         bookingVersion: booking.version,
         commandId,
+        eventId,
         state: 'pending',
         attempts: 0,
         availableAt: serverTimestamp,
@@ -463,6 +466,23 @@ function buildMutationOutbox({ db, operation, booking, commandId, serverTimestam
       },
     });
   }));
+}
+
+function buildStoredBookingNotificationSnapshot(booking, interval) {
+  try {
+    return buildAuthoritativeNotificationSnapshot({
+      shopName: booking.shopName,
+      service: {
+        snapshots: booking.services,
+        totalPriceMinor: booking.totalPriceMinor,
+        currency: booking.currency,
+        minorUnitDigits: booking.minorUnitDigits,
+      },
+      interval,
+    });
+  } catch (_error) {
+    throw migrationRequired('booking notification snapshot cannot be reconstructed');
+  }
 }
 
 function replayOrThrow(commandSnapshot, operation, requestHash) {
@@ -605,6 +625,10 @@ async function cancelBookingV2({
       bookingId: intent.bookingId,
       booking: resultBooking,
     });
+    const notificationSnapshot = buildStoredBookingNotificationSnapshot(
+      canonical.booking,
+      canonical.interval,
+    );
     const event = buildEvent({
       bookingRef,
       eventType: 'booking.cancelled',
@@ -612,6 +636,7 @@ async function cancelBookingV2({
       previousVersion: canonical.booking.version,
       authorization,
       commandId,
+      notificationSnapshot,
       serverTimestamp,
     });
     const outbox = buildMutationOutbox({
@@ -619,6 +644,7 @@ async function cancelBookingV2({
       operation: 'cancel',
       booking: { ...resultBooking, bookingId: intent.bookingId },
       commandId,
+      eventId: event.data.eventId,
       serverTimestamp,
     });
 
@@ -905,6 +931,11 @@ async function rescheduleBookingV2({
       bookingId: intent.bookingId,
       booking: updatedBooking,
     });
+    const notificationSnapshot = buildAuthoritativeNotificationSnapshot({
+      shopName: authoritative.shop.name,
+      service: authoritative.service,
+      interval: authoritative.interval,
+    });
     const event = buildEvent({
       bookingRef,
       eventType: 'booking.rescheduled',
@@ -912,6 +943,7 @@ async function rescheduleBookingV2({
       previousVersion: canonical.booking.version,
       authorization,
       commandId,
+      notificationSnapshot,
       serverTimestamp,
     });
     const outbox = buildMutationOutbox({
@@ -919,6 +951,7 @@ async function rescheduleBookingV2({
       operation: 'reschedule',
       booking: { ...updatedBooking, bookingId: intent.bookingId },
       commandId,
+      eventId: event.data.eventId,
       serverTimestamp,
     });
     const newById = new Map(newOccupancy.map((entry) => [entry.id, entry]));
