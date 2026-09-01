@@ -1,0 +1,39 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function isAllowedStagingImage() {
+      return request.resource != null
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /profile_images/{uid} {
+      allow get, create, update, delete: if isOwner(uid);
+    }
+
+    match /shop-staging/{uid}/{draftId}/{assetId} {
+      allow get, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && isAllowedStagingImage();
+    }
+
+    match /shop-public/{shopId}/{assetId} {
+      allow get: if true;
+    }
+
+    // Legacy paths can contain owner, employee, and registration data. They stay
+    // closed until a reviewed server-side migration places public assets under
+    // shop-public and private drafts under shop-staging.
+    match /shops/{legacyPath=**} {
+      allow read, write: if false;
+    }
+
+    match /{unmatchedPath=**} {
+      allow read, write: if false;
+    }
+  }
+}
