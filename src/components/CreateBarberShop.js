@@ -477,7 +477,6 @@ const CreateBarberShop = () => {
 
     const [slotDuration, setSlotDuration] = useState(30);
 
-    const MAPBOX_TOKEN = 'pk.eyJ1Ijoib3RobWFuYWRpYmVyc2hvcCIsImEiOiJjbHk5NTR1aWgwZW0yMm5xdzE2dmliZWZvIn0.XS8JZjdd1O8YIs_VXuUcPA';
 
     const [hideUI, setHideUI] = useState(false);
     const [fadeOut, setFadeOut] = useState(false);
