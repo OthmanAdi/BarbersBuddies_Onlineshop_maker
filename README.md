@@ -6,13 +6,13 @@
 
 **Launch your own professional barbershop booking system in minutes. Free, open-source, and packed with features.**
 
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)](https://github.com/Khanto87/BarbersBuddies/releases)
+[![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)](https://github.com/OthmanAdi/BarbersBuddies_Onlineshop_maker/releases)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB?logo=react&logoColor=white)](https://reactjs.org/)
 [![Firebase](https://img.shields.io/badge/Firebase-10.12-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com/)
 [![Stripe](https://img.shields.io/badge/Stripe-Payments-635BFF?logo=stripe&logoColor=white)](https://stripe.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-[Live Demo](https://barbersbuddies.com) · [Report Bug](https://github.com/Khanto87/BarbersBuddies/issues) · [Request Feature](https://github.com/Khanto87/BarbersBuddies/issues)
+[Live Demo](https://barbersbuddies.com) · [Report Bug](https://github.com/OthmanAdi/BarbersBuddies_Onlineshop_maker/issues) · [Request Feature](https://github.com/OthmanAdi/BarbersBuddies_Onlineshop_maker/issues)
 
 </div>
 
@@ -121,75 +121,58 @@
 
 ### Prerequisites
 
-- Node.js 18+
-- Firebase project
-- Stripe account (for payments)
-- Mailgun account (for emails)
+- Node.js 22
+- Java 21 or newer for the Firestore emulator
+- No Firebase, Stripe, or Mailgun credentials are required for local demo access
 
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/Khanto87/BarbersBuddies.git
-cd BarbersBuddies
+git clone https://github.com/OthmanAdi/BarbersBuddies_Onlineshop_maker.git
+cd BarbersBuddies_Onlineshop_maker
 npm install
-cd functions && npm install && cd ..
+npm --prefix functions install
 ```
 
-### 2. Environment Setup
+### 2. Start the isolated Firebase services
 
-```bash
-cp .env.example .env
+```powershell
+npm run emulators:start
 ```
 
-Fill in your `.env`:
+This command is pinned to the disposable `demo-barbersbuddies` project and starts Auth, Firestore, Functions, and Storage. On Windows it also applies the short Java temporary path required by the emulator launcher.
 
-```env
-REACT_APP_FIREBASE_API_KEY=your_key
-REACT_APP_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-REACT_APP_FIREBASE_PROJECT_ID=your_project
-REACT_APP_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-REACT_APP_FIREBASE_MESSAGING_SENDER_ID=123456789
-REACT_APP_FIREBASE_APP_ID=your_app_id
-REACT_APP_STRIPE_PUBLISHABLE_KEY=pk_test_xxx
-REACT_APP_GOOGLE_MAPS_API_KEY=your_maps_key
-```
+### 3. Start the React app
 
-### 3. Firebase Functions Config
+Open a second PowerShell terminal:
 
-```bash
-firebase functions:config:set mailgun.key="your_key" mailgun.domain="your_domain"
-```
-
-### 4. Run
-
-```bash
+```powershell
+$env:PORT=3100
 npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) 🎉
+Open [http://localhost:3100/auth](http://localhost:3100/auth), then select **Enter professional demo**.
 
----
+### Production configuration
+
+Production requires a complete Firebase client configuration from `.env.example`. Partial configuration is rejected. Local persona access is unavailable in production and cannot be forced against live Firebase or a project ID without the `demo-` prefix.
 
 ## 🧪 Demo Mode
 
-BarbersBuddies includes a complete demo data system for testing and screenshots.
+The local professional persona uses Firebase Anonymous Auth and creates only its own `users/{uid}` Firestore profile. It has no password or reusable credential. The persona registry and provisioning controller are modular so additional test roles can be added without weakening the environment boundary.
 
-### Seed Demo Data
+The panel is enabled only when all of these conditions are true:
 
-```bash
-# Download serviceAccountKey.json from Firebase Console first
-npm run seed        # Populate with demo data
-npm run seed:clean  # Remove demo data
+- `NODE_ENV` is exactly `development`.
+- Firebase is connected to local emulators.
+- The Firebase project ID starts with `demo-`.
+- `REACT_APP_DEMO_ACCESS` is not explicitly `false`.
+
+Run the real emulator-backed contract check with:
+
+```powershell
+npm run test:demo-access:emulator
 ```
-
-### Demo Accounts
-
-| Role | Email | Password |
-|------|-------|----------|
-| Shop Owner | `demo-owner@barbersbuddies.com` | `DemoOwner2026!` |
-| Customer | `demo-customer@barbersbuddies.com` | `DemoCustomer2026!` |
-
-The demo includes: 12 barbershops, 200+ bookings, 100+ ratings, message threads, and notifications.
 
 ---
 

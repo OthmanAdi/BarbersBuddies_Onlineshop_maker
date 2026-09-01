@@ -2,59 +2,49 @@
 
 Updated: 2026-09-01, Europe/Berlin
 
-## Baseline
+## Resume point
 
-- Canonical revival worktree: this repository on branch `codex/barbersbuddies-revival`.
-- Knowledge baseline: commit `61132dc366e4e30edc9c8a69cde64b010cbb09c4`.
-- The attached non-Git `BarbersBuddies_Onlineshop_maker-main` snapshot had no newer shared source after normalized comparison. This Git worktree is the implementation target.
-- Architecture: React 18 Create React App client, Firebase Web SDK, Firebase Functions, Firestore Rules/indexes, and Firebase Hosting.
-- Package boundaries are separate: root client and `functions/` each have their own manifest and lockfile. Functions declares Node 20.
-- Durable technical research lives in `docs/knowledge/`. Graphify navigation lives in `graphify-out/`.
+- Canonical original: `C:\Users\oasrvadmin\Documents\BarbersBuddies`, base `61132dc366e4e30edc9c8a69cde64b010cbb09c4`. Preserve its user-owned dirty state.
+- Implementation: `C:\Users\oasrvadmin\Documents\BarbersBuddies-revival-worktree`, branch `codex/barbersbuddies-revival`. The professional local-access implementation is committed at `f37d6e7`.
+- All requested subagents finished. Their bounded work was reviewed and committed. Do not start replacement agents for this paused run.
+- No push, deployment, production Firebase access, Mailgun send, migration, or live seed occurred.
+- The durable board is `C:\Users\oasrvadmin\Documents\BarbersBuddies\.planning\2026-09-01-barbersbuddies-revival`. No separate localhost board was created.
 
-## Decisions
+## Accepted architecture
 
-- Work offline by default. Firebase emulators are the first runtime boundary; production Firebase access, mutation, and deployment require explicit authorization for the exact target.
-- Treat `functions/index.js` as the Functions composition root. Do not activate alternate backend copies without deployment evidence and a migration decision.
-- Booking v2 is a server-authoritative, idempotent command API with deterministic occupancy and a durable notification outbox. Guest create is allowed; cancel and reschedule require a verified Firebase identity, with a one-time reviewed normalized-email binding for unowned legacy/guest bookings.
-- Scheduling will use shop IANA timezone, civil date/time input, server-derived timestamps, and half-open `[startAt, endAt)` occupancy.
-- Rules, indexes, Functions behavior, schema migration, and UI callers must change behind emulator-backed contract tests, not as isolated client patches.
-- Existing data is evidence. Migrations need dry-run output and must not silently delete, merge, or reinterpret historical records.
-- Keep dependency modernization separate from booking correctness. Upgrade one compatibility boundary at a time after coverage exists.
-- Use revision-pinned knowledge artifacts and label claims `Observed`, `Inferred`, or `Unknown`.
+- Booking v2 is additive, server-authoritative, and dark-gated. Create, cancel, and reschedule use strict validation, IANA civil time, half-open occupancy, transactions, idempotency, optimistic versions, safe public errors, and PII-free outbox metadata.
+- Immutable event snapshots, recipient-source resolution, the Mailgun adapter, and the leased outbox worker are committed. Delivery remains at-least-once. The worker is deliberately unexported and unscheduled.
+- Store v2 has strict schema, atomic idempotent create, a dark HTTP boundary, a strict frontend command client, and a safe staged-asset client. It is not yet the active legacy UI path.
+- Browser booking intent identity is consolidated in `src/booking-v2/intentRegistry.js`. Legacy direct booking mutations and calendar calculations are still cutover blockers.
+- Blank development resolves once at bootstrap to the disposable `demo-barbersbuddies` Firebase emulator configuration. Firebase and feature tooling consume the same frozen runtime decision.
 
-## Known critical defects at the pinned baseline
+## Professional local persona
 
-- Booking availability uses a non-transactional query followed by a random-ID slot write; concurrent requests can claim the same time.
-- The booking client contains a non-interpolated endpoint string, while the server writes a different booking shape and does not check slot vacancy.
-- Email failures can occur after a booking commit, causing ambiguous client failure and duplicate retry risk.
-- Reschedule can reference an undefined appointment, invoke the server twice, and does not atomically move occupancy.
-- Client and server status sets, booking fields, date representations, and authorization identifiers disagree.
-- State-changing HTTP Functions use CORS but have no observed Firebase ID-token authorization boundary.
-- Checked-in Rules have no match for several client-used collections, including `bookedTimeSlots`, `tempShops`, and `shopDrafts`.
-- User role/subscription data, public shop employee/token data, invite redemption, and FCM token updates require a focused authorization redesign.
-- No tracked Storage Rules file exists.
-- The only tracked client test is a stale CRA starter assertion; no booking, Functions, Rules, emulator, concurrency, or browser suite exists.
-- A tracked seed configuration contains demo credential values. Never reproduce them; replace and rotate through a dedicated security process.
+- `src/runtime/` owns the exact `development`, `test`, or `production` decision before Firebase initialization.
+- `src/dev-access/personas.js` is the immutable persona registry. The current `professional` persona is an anonymous `shop-owner` and routes to `/account`.
+- `src/dev-access/demoAccessController.js` owns idempotent provisioning, race coalescing, conflict refusal, sanitized errors, and cleanup on failure.
+- The persona has no password, token, or reusable credential. It writes only its own `users/{uid}` emulator profile.
+- Demo access is available only for `NODE_ENV=development`, Firebase emulator mode, and a `demo-*` project. Production and live Firebase fail closed before Auth or Firestore calls.
+- `npm run emulators:start` now applies the Windows-safe short Java temp path and hard-pins Auth, Firestore, Functions, and Storage to `demo-barbersbuddies`.
 
-## Current receipts
+## Reliable receipts
 
-- On 2026-09-01, `npm ci --ignore-scripts` completed in both package boundaries under host Node `v24.12.0` and npm `11.6.2`.
-- That host Node major does not satisfy the Functions package Node 20 declaration, so it is install evidence, not Functions compatibility proof.
-- Initial registry audits reported 96 root advisories (7 critical, 42 high) and 25 Functions advisories (3 critical, 13 high). After pinning local emulator/test dependencies, the root count changed to 96 (6 critical, 40 high) and Functions remained 25. Counts are time-sensitive; no automatic audit fix was authorized.
-- The Graphify code-only graph contains 699 nodes and 1,123 post-build edges. It is navigational only: health checks reported dangling endpoints, self-loops, collapsed same-endpoint edges, and a partial parse of `src/components/ClientManagementDashboard.js`.
-- `npm run build` passed on Node 24.12.0. The legacy full CRA test command still fails before assertions with `TextDecoder` in the Firebase Auth/undici path, while the new focused `src/api/bookingCommands.test.js` passed 13/13 without Firebase imports.
-- Isolated domain tests passed 17/17 under local Node 22.20.0. Time, Rules, and transactional create/emulator work are active and are not yet emulator proof.
-- Seed hardening now uses generated local-only credentials and fails closed unless both Auth and Firestore emulator hosts are local and the project ID begins `demo-`; it has static/in-memory guard receipts only, not an emulator seed receipt.
+- Complete CRA suite on Node 22: 351 passed, 1 opt-in emulator test skipped.
+- Real Auth plus Firestore emulator persona test: 1/1 passed. It created an anonymous user, wrote the expected shop-owner profile, and verified no password field.
+- Fresh headless Chrome loaded `/auth`, observed `development`, `emulator`, and `demo-barbersbuddies`, clicked **Enter professional demo**, reached `/account`, and observed no runtime or access error.
+- New runtime, persona, and emulator-start modules pass ESLint with zero warnings.
+- Optimized Node 22 production build exits zero. Existing warning debt remains, and the main bundle is 1.22 MB gzipped.
+- Expanded Functions unit manifest passes 204/204. Previously recorded Node 20/22 booking, Rules, concurrency, Mailgun, notification, and outbox matrices remain valid for their scoped commits.
+- Local services listen on app `3100`, Emulator UI `4000`, Functions `5001`, Firestore `8080`, Auth `9099`, and Storage `9199`.
 
-## Blockers and required product input
+## Open risks and honest limits
 
-- Exact Firebase project, Hosting targets, Functions region/runtime, deployed Functions, Rules, indexes, Storage Rules, and Auth providers are unknown.
-- Production credentials and access are intentionally unavailable. Wait for the user; do not use browser automation to enter their Google account without a new explicit request.
-- The offline contract requires an authoritative IANA shop timezone and rejects DST gaps/ambiguous starts. Actual shop timezones and repeated-DST disambiguation policy remain undecided.
-- Capacity may be per shop, employee, chair, or pooled resource; the source is inconsistent.
-- Service duration, buffers, lead time, cancellation/reschedule policy, anonymous-booking abuse controls, and historical schema migration policy need product decisions or redacted data evidence.
-- Existing production duplicates, orphan slots, drafts, temp shops, and schema variants are unknown.
+- GitHub issue #2, `Booking not working`, remains open and is not confirmed fixed. Local backend repairs do not equal a pushed fix or a proven public browser booking journey.
+- The active legacy frontend still contains direct Firestore booking writes, unsafe calendar/time derivation, and paths not cut over to booking v2.
+- Full browser journeys for store creation, booking, duplicate booking, calendar rendering, cancellation, and reschedule remain unproven.
+- Production Firebase data, Rules, indexes, Auth configuration, Hosting, Functions configuration, and Mailgun delivery remain blocked until the user supplies access and authorizes those checks.
+- Dependency advisories, CRA maintenance debt, broad lint/accessibility warnings, and bundle size remain tracked work. Do not run a broad automatic audit fix.
 
-## Continuation point
+## Next action
 
-Finish and review the active time, Rules, and transactional create slices. Then add cancel/reschedule transaction services and HTTP export integration, run the disposable Auth/Firestore/Functions emulator matrix under the declared runtime, and only then cut the UI over from direct slot writes. Keep the v2 feature flag off and do not request production access until the offline gates are recorded.
+Stop after the documentation commit and wait for the user. When explicitly resumed, begin with the full local browser booking journey for GitHub issue #2, then the store-creation journey. Keep production untouched and do not close the issue until the repaired path is pushed and reproduced through the user-facing flow.

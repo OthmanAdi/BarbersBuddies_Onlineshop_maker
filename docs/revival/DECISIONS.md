@@ -1,57 +1,65 @@
 # BarbersBuddies Revival Decisions
 
-## DEC-001: canonical source and implementation boundary
+## DEC-001: preserve source and implement in a clean worktree
 
-**Decision:** Treat `C:\Users\oasrvadmin\Documents\BarbersBuddies` at `61132dc366e4e30edc9c8a69cde64b010cbb09c4` as the source of truth, and implement only in the clean sibling worktree on `codex/barbersbuddies-revival`.
+Use the canonical original checkout only as protected evidence and implement in the clean `codex/barbersbuddies-revival` worktree. The adjacent onlineshop folder is not an alternate source of truth. Do not reset, stash, or alter user-owned original state.
 
-**Why:** The attached onlineshop folder is a non-Git snapshot with no unique shared source. The canonical checkout has user-owned untracked material and ignored sensitive files that must remain untouched.
+## DEC-002: Firebase and delivery remain offline by default
 
-**Consequence:** Fetch/compare remote state before each integration decision. Do not use the snapshot or `.git_backup` as an implementation base.
+No production Firebase or Mailgun action without exact user authorization and configuration. Use disposable emulators for behavior evidence. No push, deploy, migration, seed, or credential use has occurred.
 
-## DEC-002: Firebase remains offline by default
+## DEC-003: booking v2 is additive and dark-gated
 
-**Decision:** Work from source, controlled local tests, and eventually a disposable emulator project until the user authorizes exact Firebase access.
+Create, cancel, and reschedule are server-authoritative named commands with idempotency, versioning, strict civil-time validation, deterministic five-minute occupancy, and transaction read-before-write. Keep activation dark except Functions emulator or explicit `BOOKING_V2_ENABLED=true`.
 
-**Why:** Checked-in files cannot prove deployed Firebase state, and the project contains sensitive local material.
+## DEC-004: identity and public error contracts are strict
 
-**Consequence:** No production mutation, deploy, seed, migration, or credential use. Separate emulator and production evidence in every status update.
+Guest create is permitted; cancel/reschedule require a verified Firebase identity, with one controlled normalized-email binding path for compatible legacy/guest bookings. Public responses use canonical error codes and never expose internal errors, keys, or PII.
 
-## DEC-003: required research and planning tools
+## DEC-005: notifications use immutable, PII-free snapshots
 
-**Decision:** Use Planning With Files, Codebase Knowledge Builder, Graphify, and Context7 as the core revival workflow.
+The outbox stores routing metadata, not recipient/body/raw provider payload. Notification content must render from an immutable event snapshot so later booking changes cannot rewrite historical messages. The snapshot requires canonical `startAt`, IANA timezone/civil time agreement, and explicit currency `minorUnitDigits`; do not assume all currencies have two decimal places.
 
-**Why:** The project needs durable resumability, source-cited architecture mapping, secret-safe navigation, and current dependency/framework documentation.
+## DEC-006: delivery is at-least-once, not exact-once
 
-**Consequence:** Keep plans, knowledge, status, decisions, validation, and project memory current. Treat Graphify and memory as navigation aids and confirm material conclusions in current source or a focused receipt.
+Lease-based outbox claiming and deterministic message correlation reduce duplicate risk but cannot prove exactly-once delivery. The worker/index/scripts are committed at `c8c4ebd` and independently pass Node 20/22 unit 10/10 plus emulator 9/9 after the Mailgun `Error`-subclass normalization repair. Mailgun has no verified provider idempotency key in this integration, so a crash after acceptance may cause retry. Do not export or schedule the worker until resolver, producer, and configuration are complete.
 
-## DEC-004: Codebase Memory MCP is deferred, not rejected
+## DEC-007: currency and notification snapshots require explicit authority
 
-**Decision:** Do not run its automatic installer yet. If adopted later, use a reviewed, version-pinned binary/manual setup with manual indexing, `auto_index=false`, `auto_watch=false`, and a reviewed ignore scope.
+`4c123c6` commits an explicitly supported EUR/two-minor-digit policy and a pure snapshot builder that accepts only exact trusted fields and canonicalizes a timestamp before template validation. Do not broaden currencies, fabricate minor-unit metadata, or silently coerce legacy/non-EUR data. Event ID and snapshot-producer linkage remain separate active integration work.
 
-**Why:** Its installer can edit global agent configuration, add hooks/skills, run a daemon/watcher, and write repository artifacts. Existing Knowledge Builder and Graphify workflows can safely begin the revival.
+## DEC-008: store/UI cutover requires real product inputs
 
-**Consequence:** No Codebase Memory MCP daemon, watcher, automatic config change, or repository database is currently evidence for this project.
+The v2 store schema is additive only. Do not wire legacy store creation or calendar UI until timezone, currency/minor-unit policy, services, resource/employee scheduling, capacity, consent/cancellation policy, and migration conflict handling are explicitly decided or evidenced. `bca4afc` fixes the payment-step implicit-submit duplicate-store trigger, but durable server-side store idempotency remains required.
 
-## DEC-005: graph trust limit
+## DEC-009: legacy calendar/direct edits are P0 cutover blockers
 
-**Decision:** Retain the sanitized Graphify graph for fast orientation, but do not use it as sole proof.
+The legacy client must not be treated as a v2 caller: it converts civil dates via UTC serialization, models availability as matching time strings rather than intervals/resources/buffers, and permits arbitrary direct booking updates. `74ebb35` provides pure civil-time primitives only; it intentionally lacks `24:00` and cross-midnight policy and has no component cutover. Replace paths only behind the v2 command and emulator/browser evidence; do not patch them with additional client-only checks.
 
-**Why:** The current graph reports dangling edges, self-loops, collapsed endpoints, and a partial parser result.
+## DEC-010: knowledge tools are navigational, receipts are authoritative
 
-**Consequence:** Verify every implementation-impacting graph conclusion directly in the relevant source and tests. Refresh only after the reviewed ignore boundary is still secret-safe.
+Planning With Files, Codebase Knowledge Builder, Graphify, agent memory, and project guidance are maintained for resumability. Graph/query results guide exploration but material claims require source inspection or a scoped test/emulator receipt.
 
-## DEC-006: Node 22 migration is a proposal, not completed work
+## DEC-011: shop creation is server-owned but remains dark
 
-**Decision:** Consider a bounded migration to Node 22 after behavior is protected, but do not claim it has been performed.
+`417c48b` validates the server-owned v2 shop schema and `64b44eb` supplies atomic idempotent creation. `95a1625` supplies its HTTP boundary. Do not export or activate that boundary until the frontend/store orchestration is accepted and the emulator/browser release gates are met.
 
-**Why:** The Functions package declares Node 20 while the host runs Node 24. Node 22 is a likely supported target, but support and package compatibility need current, scoped verification.
+## DEC-012: blank emulator boot is a startup receipt only
 
-**Consequence:** Preserve the current Node 20 declaration until a dedicated dependency/runtime change includes documentation, tests, and emulator/build receipts.
+The blank dev application must use the disposable Firebase emulator project and safe Storage policy. A listening service set and rendered Chrome DOM prove startup, not booking/store behavior, persistence, authorization, or production readiness.
 
-## DEC-007: Booking v2 is the offline contract; activation remains gated
+## DEC-013: environment is decided once before Firebase initialization
 
-**Decision:** Implement ADR 001 offline: named `createBookingV2`, `cancelBookingV2`, and `rescheduleBookingV2` commands with safe envelopes, deterministic five-minute occupancy, IANA-zone civil time, idempotency, versioning, and durable outbox records. Guest create is allowed. Cancel/reschedule require a verified Firebase identity, with an explicit one-time normalized-email binding path for unowned guest/legacy bookings.
+The application creates one frozen runtime value at bootstrap. Firebase initialization, diagnostics, and local persona tooling consume that same value. `NODE_ENV` accepts only `development`, `test`, or `production`. Demo access can be enabled only in development, in emulator mode, with a `demo-*` project ID. Attempts to force it in production or against live Firebase fail before any Auth or Firestore call.
 
-**Why:** This is enough to close the known double-booking and ambiguous-retry design failures in disposable emulators while preserving the product/data choices that need real evidence.
+## DEC-014: test identities are named personas, not shared credentials
 
-**Consequence:** The v2 feature remains off. No data migration, legacy projection, deployment, or live access proceeds until product policy, authorized Firebase inventory, emulator evidence under the declared runtime, browser evidence, and an explicit release decision exist. In particular, timezone values, intentionally empty roster semantics, duration/buffer limits, abuse controls, cancellation policy, repeated-DST behavior, and legacy conflict handling are still unresolved.
+Local feature testing uses an immutable persona registry and an injected provisioning controller. The professional persona uses Firebase Anonymous Auth, creates only its own emulator profile, contains no password or reusable token, coalesces repeated entry, and refuses profile conflicts. Future personas must extend this registry and retain the same runtime boundary.
+
+## DEC-015: local emulator startup owns the Windows Java workaround
+
+The repository command, not operator memory, owns the short Windows `TEMP` and `TMP` path needed by the Firestore emulator on this host. The launcher stays hard-pinned to `demo-barbersbuddies` and the exact Auth, Firestore, Functions, and Storage service set.
+
+## DEC-016: a repaired subsystem does not close a user-facing issue
+
+GitHub issue #2 remains open. Backend booking invariants and local tests do not establish that the public issue is fixed. Closure requires the supported browser booking flow, duplicate-attempt behavior, calendar result, remote integration, and a reproduction against the delivered revision.
