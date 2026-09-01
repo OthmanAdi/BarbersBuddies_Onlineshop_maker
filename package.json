@@ -68,6 +68,11 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:booking-api": "react-scripts test src/api/bookingCommands.test.js --watchAll=false --runInBand",
+    "test:booking:unit": "npm --prefix functions run test:unit",
+    "test:rules": "node --test test/firestore-rules.test.js",
+    "test:firestore-rules": "powershell.exe -NoProfile -File scripts/test-firestore-rules.ps1",
+    "emulators:start": "firebase emulators:start --project demo-barbersbuddies --only auth,firestore,functions",
     "eject": "react-scripts eject",
     "dev": "react-scripts start",
     "seed": "node scripts/seed/index.js",
@@ -92,6 +97,8 @@
     ]
   },
   "devDependencies": {
-    "esm": "^3.2.25"
+    "@firebase/rules-unit-testing": "3.0.4",
+    "esm": "^3.2.25",
+    "firebase-tools": "15.28.2"
   }
 }

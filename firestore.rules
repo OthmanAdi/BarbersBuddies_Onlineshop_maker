@@ -2,6 +2,42 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isCurrentShopOwner(shopId) {
+      return isSignedIn() &&
+        shopId is string &&
+        exists(/databases/$(database)/documents/barberShops/$(shopId)) &&
+        get(/databases/$(database)/documents/barberShops/$(shopId)).data.ownerId == request.auth.uid;
+    }
+
+    function isBookingCustomer(booking) {
+      return isSignedIn() &&
+        booking.customerUid is string &&
+        booking.customerUid == request.auth.uid;
+    }
+
+    function isVerifiedLegacyBookingCustomer(booking) {
+      return isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email is string &&
+        booking.userEmail is string &&
+        booking.userEmail == request.auth.token.email;
+    }
+
+    function canReadBooking(booking) {
+      return isBookingCustomer(booking) ||
+        isVerifiedLegacyBookingCustomer(booking) ||
+        isCurrentShopOwner(booking.shopId);
+    }
+
+    function canReadBookingById(bookingId) {
+      return exists(/databases/$(database)/documents/bookings/$(bookingId)) &&
+        canReadBooking(get(/databases/$(database)/documents/bookings/$(bookingId)).data);
+    }
+
     // Users: only own data
     match /users/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
@@ -11,19 +47,41 @@ service cloud.firestore {
     // Barber Shops: public read, owner write
     match /barberShops/{shopId} {
       allow read: if true;
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null && request.auth.uid == resource.data.ownerId;
+      allow create: if isSignedIn() &&
+        request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn() &&
+        resource.data.ownerId == request.auth.uid &&
+        request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if isSignedIn() &&
+        resource.data.ownerId == request.auth.uid;
     }
 
-    // Bookings: customer or shop owner access
+    // Bookings: participant reads, server-owned writes
     match /bookings/{bookingId} {
-      allow read: if request.auth != null &&
-        (request.auth.token.email == resource.data.userEmail ||
-         request.auth.uid == resource.data.shopOwnerId);
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null &&
-        (request.auth.token.email == resource.data.userEmail ||
-         request.auth.uid == resource.data.shopOwnerId);
+      allow read: if canReadBooking(resource.data);
+      allow create, update, delete: if false;
+
+      match /events/{eventId} {
+        allow read: if canReadBookingById(bookingId);
+        allow create, update, delete: if false;
+      }
+    }
+
+    // Booking infrastructure: server only
+    match /bookingOccupancy/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /bookingCommands/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /bookingOutbox/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /bookedTimeSlots/{document=**} {
+      allow read, write: if false;
     }
 
     // Messages: participants only

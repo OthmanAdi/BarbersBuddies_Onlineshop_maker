@@ -1,18 +1,51 @@
 {
-    "indexes": [
-      {
-        "collectionGroup": "shopNames",
-        "queryScope": "COLLECTION",
-        "fields": [
-          {
-            "fieldPath": "nameSearch",
-            "order": "ASCENDING"
-          },
-          {
-            "fieldPath": "nameSearch",
-            "order": "ASCENDING"
-          }
-        ]
-      }
-    ]
-  }
+  "indexes": [
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "shopId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "selectedDate",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "selectedTime",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "shopId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "bookingOutbox",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "state",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "availableAt",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
