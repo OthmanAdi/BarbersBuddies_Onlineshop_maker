@@ -5,7 +5,7 @@ const OPERATION_ENDPOINT_NAMES = Object.freeze({
   cancel: 'cancelBookingV2',
   reschedule: 'rescheduleBookingV2',
 });
-const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._~-]{16,128}$/;
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$/;
 const BOOKING_STATUSES = new Set([
   'pending',
   'confirmed',

@@ -69,6 +69,23 @@ describe('authenticated booking command boundary', () => {
     });
   });
 
+  test('uses the same idempotency-key alphabet as the booking backend', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(response(successEnvelope));
+    const bookingClient = client({ fetchImpl });
+
+    await expect(bookingClient.execute({
+      ...command,
+      idempotencyKey: 'request:key.0000001',
+    })).resolves.toMatchObject({ ok: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    await expect(bookingClient.execute({
+      ...command,
+      idempotencyKey: 'request~key.0000001',
+    })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   test('snapshots validated payload before awaiting token acquisition', async () => {
     let releaseToken;
     const token = new Promise((resolve) => {

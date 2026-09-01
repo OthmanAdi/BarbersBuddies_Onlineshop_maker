@@ -2,8 +2,11 @@ const REGISTRY_VERSION = 1;
 const REGISTRY_STORAGE_KEY = 'barbersbuddies.booking-v2.intents.v1';
 const FINGERPRINT_PREFIX = 'sha256:v1:';
 const FINGERPRINT_PATTERN = /^sha256:v1:[a-f0-9]{64}$/;
-const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._~-]{16,128}$/;
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$/;
+const UUID_V4_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const ALLOWED_OPERATIONS = new Set(['create', 'cancel', 'reschedule']);
+const CLEARING_OUTCOMES = new Set(['success', 'terminal-failure']);
+const RETAINING_OUTCOMES = new Set(['retryable-failure', 'ambiguous']);
 const MAX_PLAIN_DATA_DEPTH = 32;
 const MAX_PLAIN_DATA_NODES = 10000;
 
@@ -146,6 +149,19 @@ function requireOperation(operation) {
     throw invalidIntent();
   }
   return operation;
+}
+
+function requireOutcome(outcome) {
+  if (CLEARING_OUTCOMES.has(outcome)) {
+    return 'clear';
+  }
+  if (RETAINING_OUTCOMES.has(outcome)) {
+    return 'retain';
+  }
+  throw registryError(
+    'INVALID_BOOKING_INTENT_OUTCOME',
+    'The booking command outcome is invalid.'
+  );
 }
 
 function resolveCrypto(cryptoImpl) {
@@ -320,14 +336,44 @@ async function fingerprintIntent({
 
 function createIdempotencyKey(cryptoImpl) {
   const secureCrypto = resolveCrypto(cryptoImpl);
-  if (typeof secureCrypto?.randomUUID === 'function') {
-    const key = secureCrypto.randomUUID();
-    if (IDEMPOTENCY_KEY_PATTERN.test(key)) {
+  let randomUUID;
+  try {
+    randomUUID = secureCrypto?.randomUUID;
+  } catch (_error) {
+    throw registryError(
+      'BOOKING_INTENT_CRYPTO_FAILURE',
+      'The booking request could not be identified securely.'
+    );
+  }
+  if (typeof randomUUID === 'function') {
+    let key;
+    try {
+      key = randomUUID.call(secureCrypto);
+    } catch (_error) {
+      throw registryError(
+        'BOOKING_INTENT_CRYPTO_FAILURE',
+        'The booking request could not be identified securely.'
+      );
+    }
+    if (typeof key === 'string' && UUID_V4_PATTERN.test(key)) {
       return key;
     }
+    throw registryError(
+      'BOOKING_INTENT_CRYPTO_FAILURE',
+      'The booking request could not be identified securely.'
+    );
   }
 
-  if (typeof secureCrypto?.getRandomValues !== 'function') {
+  let getRandomValues;
+  try {
+    getRandomValues = secureCrypto?.getRandomValues;
+  } catch (_error) {
+    throw registryError(
+      'BOOKING_INTENT_CRYPTO_FAILURE',
+      'The booking request could not be identified securely.'
+    );
+  }
+  if (typeof getRandomValues !== 'function') {
     throw registryError(
       'BOOKING_INTENT_CRYPTO_UNAVAILABLE',
       'Secure booking request identifiers are unavailable.'
@@ -336,7 +382,7 @@ function createIdempotencyKey(cryptoImpl) {
 
   const bytes = new Uint8Array(16);
   try {
-    secureCrypto.getRandomValues(bytes);
+    getRandomValues.call(secureCrypto, bytes);
   } catch (_error) {
     throw registryError(
       'BOOKING_INTENT_CRYPTO_FAILURE',
@@ -346,13 +392,20 @@ function createIdempotencyKey(cryptoImpl) {
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0'));
-  return [
+  const key = [
     hex.slice(0, 4).join(''),
     hex.slice(4, 6).join(''),
     hex.slice(6, 8).join(''),
     hex.slice(8, 10).join(''),
     hex.slice(10).join(''),
   ].join('-');
+  if (!UUID_V4_PATTERN.test(key)) {
+    throw registryError(
+      'BOOKING_INTENT_CRYPTO_FAILURE',
+      'The booking request could not be identified securely.'
+    );
+  }
+  return key;
 }
 
 export async function acquireBookingIntentKey({
@@ -392,13 +445,25 @@ export async function acquireBookingIntentKey({
   return idempotencyKey;
 }
 
-export async function markBookingIntentSucceeded({
+export const getBookingIntentKey = acquireBookingIntentKey;
+
+export async function settleBookingIntent({
+  outcome,
   operation,
   intent,
   storage,
   cryptoImpl,
   TextEncoderImpl,
 }) {
+  const disposition = requireOutcome(outcome);
+  requireOperation(operation);
+
+  // An ambiguous outcome must retain the identity even when a caller also
+  // considers the error non-retryable: the request may have reached the server.
+  if (disposition === 'retain') {
+    return false;
+  }
+
   const fingerprint = await fingerprintIntent({
     operation,
     intent,
@@ -423,6 +488,10 @@ export async function markBookingIntentSucceeded({
     writeRegistry(durableStorage, registry);
   }
   return true;
+}
+
+export function markBookingIntentSucceeded(options) {
+  return settleBookingIntent({ ...options, outcome: 'success' });
 }
 
 export const BOOKING_INTENT_STORAGE_KEY = REGISTRY_STORAGE_KEY;
