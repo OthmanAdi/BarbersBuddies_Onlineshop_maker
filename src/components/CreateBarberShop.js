@@ -1025,17 +1025,33 @@ const CreateBarberShop = () => {
     };
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        let isActive = true;
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
                 setUser(currentUser);
-                setEmail(currentUser.email);
+                let resolvedEmail = currentUser.email || '';
+                if (!resolvedEmail) {
+                    try {
+                        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+                        if (userDoc.exists() && typeof userDoc.data().email === 'string') {
+                            resolvedEmail = userDoc.data().email;
+                        }
+                    } catch {
+                        resolvedEmail = '';
+                    }
+                }
+                if (!isActive) return;
+                setEmail(resolvedEmail);
                 setIsFirebaseInitialized(true);
             } else {
                 navigate('/auth');
             }
         });
 
-        return () => unsubscribe();
+        return () => {
+            isActive = false;
+            unsubscribe();
+        };
     }, [navigate]);
 
     if (!isFirebaseInitialized) {

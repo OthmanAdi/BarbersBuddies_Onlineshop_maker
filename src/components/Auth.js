@@ -54,6 +54,10 @@ import {BrandLogo} from "./BrandLogo";
 import {DE, GB, SA, TR} from "country-flag-icons/react/3x2";
 import useStore from '../store';
 import MobileAccountTypeHelp from "./MobileAccountTypeHelp";
+import DemoAccessPanel from '../dev-access/DemoAccessPanel';
+import {firebaseDemoAccess} from '../dev-access/firebaseDemoAccess';
+import {isDemoPersonaIdentity} from '../dev-access/personas';
+import {appRuntime} from '../runtime/currentAppRuntime';
 
 const avatars = [
     `https://api.dicebear.com/7.x/avataaars/svg?seed=Felix&backgroundColor=b6e3f4`,
@@ -62,12 +66,25 @@ const avatars = [
     `https://api.dicebear.com/7.x/avataaars/svg?seed=Olivia&backgroundColor=d1f4d7`,
 ];
 
-// Demo accounts bypass email verification (for seed data testing)
-const DEMO_EMAILS = [
-    'demo-owner@barbersbuddies.com',
-    'demo-customer@barbersbuddies.com'
-];
-const isDemoAccount = (email) => DEMO_EMAILS.includes(email?.toLowerCase());
+const isDemoAccount = (identity) => isDemoPersonaIdentity(identity, appRuntime);
+const AUTH_STATE_MESSAGES = Object.freeze({
+    en: Object.freeze({
+        verificationRequired: 'Please verify your email before signing in.',
+        generalError: 'Your authentication state could not be verified.'
+    }),
+    tr: Object.freeze({
+        verificationRequired: 'Giriş yapmadan önce lütfen e-posta adresinizi doğrulayın.',
+        generalError: 'Kimlik doğrulama durumunuz doğrulanamadı.'
+    }),
+    ar: Object.freeze({
+        verificationRequired: 'يرجى تأكيد بريدك الإلكتروني قبل تسجيل الدخول.',
+        generalError: 'تعذر التحقق من حالة المصادقة.'
+    }),
+    de: Object.freeze({
+        verificationRequired: 'Bitte bestätigen Sie Ihre E-Mail-Adresse, bevor Sie sich anmelden.',
+        generalError: 'Ihr Authentifizierungsstatus konnte nicht überprüft werden.'
+    })
+});
 
 const AuthForm = ({
                       showTypeWarning,
@@ -1376,6 +1393,7 @@ const Auth = () => {
     const [alertMessage, setAlertMessage] = useState('');
     const [isCropModalOpen, setIsCropModalOpen] = useState(false);
     const [tempImage, setTempImage] = useState(null);
+    const authStateMessages = AUTH_STATE_MESSAGES[language] || AUTH_STATE_MESSAGES.en;
 
     useEffect(() => {
         // Only reset the state values
@@ -1454,50 +1472,43 @@ const Auth = () => {
     };
 
     useEffect(() => {
+        let isActive = true;
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                // Demo accounts bypass email verification
-                if (!user.emailVerified && user.providerData[0].providerId === 'password' && !isDemoAccount(user.email)) {
-                    setError(t.emailVerificationRequired);
+            if (!user) return;
+
+            try {
+                const isLocalDemo = isDemoAccount(user);
+                const usesPasswordProvider = Array.isArray(user.providerData) &&
+                    user.providerData.some((provider) => provider?.providerId === 'password');
+
+                if ((user.isAnonymous === true && !isLocalDemo) ||
+                    (!user.emailVerified && usesPasswordProvider && !isLocalDemo)) {
+                    setError(authStateMessages.verificationRequired);
                     await auth.signOut();
                     return;
                 }
-                console.log("User is signed in:", user);
-                console.log("User UID:", user.uid);
-                console.log("User email:", user.email);
-                console.log("Is demo account:", isDemoAccount(user.email));
 
-                // Get the user's document from Firestore to check userType
                 const userDoc = await getDoc(doc(db, 'users', user.uid));
-                console.log("User doc exists:", userDoc.exists());
+                if (!isActive) return;
 
                 if (userDoc.exists()) {
                     const userData = userDoc.data();
-                    console.log("User data:", userData);
-                    // Navigate based on userType
                     if (userData.userType === 'customer') {
                         navigate('/shops');
-                    } else {
+                    } else if (userData.userType === 'shop-owner') {
                         navigate('/create-shop');
                     }
-                } else {
-                    console.log("No user document found for UID:", user.uid);
-                    // For demo accounts without docs, navigate based on email
-                    if (isDemoAccount(user.email)) {
-                        if (user.email.includes('owner')) {
-                            navigate('/create-shop');
-                        } else {
-                            navigate('/shops');
-                        }
-                    }
                 }
-            } else {
-                console.log("No user is signed in.");
+            } catch {
+                if (isActive) setError(authStateMessages.generalError);
             }
         });
 
-        return () => unsubscribe();
-    }, [navigate]);
+        return () => {
+            isActive = false;
+            unsubscribe();
+        };
+    }, [authStateMessages, navigate]);
 
     const handleAuth = async (e) => {
         e.preventDefault();
@@ -1937,6 +1948,7 @@ const Auth = () => {
                 isVisible={showAlert}
                 onClose={() => setShowAlert(false)}
             />
+            <DemoAccessPanel runtime={appRuntime} access={firebaseDemoAccess} />
             {isVerificationSent ? (
                 <VerificationView
                     email={userEmail}

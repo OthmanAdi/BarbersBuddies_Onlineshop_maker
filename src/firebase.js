@@ -26,9 +26,10 @@ import {
     updateDoc
 } from 'firebase/firestore';
 import {connectFunctionsEmulator, getFunctions} from 'firebase/functions';
-import {connectFirebaseEmulatorsOnce, resolveFirebaseRuntimeConfig} from './firebase-runtime';
+import {connectFirebaseEmulatorsOnce} from './firebase-runtime';
+import {appRuntime} from './runtime/currentAppRuntime';
 
-const firebaseRuntime = resolveFirebaseRuntimeConfig(process.env);
+const firebaseRuntime = appRuntime.firebase;
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseRuntime.config);
 const auth = getAuth(app);
 const db = getFirestore(app);

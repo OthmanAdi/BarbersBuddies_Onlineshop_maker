@@ -456,12 +456,13 @@ const AccountPage = () => {
                 // Combine auth user with Firestore data
                 setUser({
                     ...currentUser,
+                    email: currentUser.email || userData?.email || '',
                     phoneNumber: userData?.phoneNumber || '',
                     userType: userData?.userType || ''  // Add userType here
                 });
                 setUserType(userData?.userType); // Set userType in state
                 setName(currentUser.displayName || '');
-                setEmail(currentUser.email || '');
+                setEmail(currentUser.email || userData?.email || '');
                 setPhone(userData?.phoneNumber || '');
                 await fetchShopData(currentUser.uid);
             } else {

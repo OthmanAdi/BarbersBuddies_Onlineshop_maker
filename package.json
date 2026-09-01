@@ -74,7 +74,8 @@
     "test:rules": "node --test test/firestore-rules.test.js",
     "test:firestore-rules": "powershell.exe -NoProfile -File scripts/test-firestore-rules.ps1",
     "test:storage-rules": "powershell.exe -NoProfile -File scripts/test-storage-rules.ps1",
-    "emulators:start": "firebase emulators:start --project demo-barbersbuddies --only auth,firestore,functions,storage",
+    "test:demo-access:emulator": "node scripts/test-demo-access-emulator.js",
+    "emulators:start": "node scripts/start-firebase-emulators.js",
     "eject": "react-scripts eject",
     "dev": "react-scripts start",
     "seed": "node scripts/seed/index.js",
@@ -99,6 +100,7 @@
     ]
   },
   "devDependencies": {
+    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
     "@firebase/rules-unit-testing": "3.0.4",
     "esm": "^3.2.25",
     "firebase-tools": "15.28.2"

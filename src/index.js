@@ -5,8 +5,14 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import {DevSupport} from "@react-buddy/ide-toolbox";
 import {ComponentPreviews, useInitial} from "./dev";
+import {appRuntime} from './runtime/currentAppRuntime';
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
+const rootElement = document.getElementById('root');
+rootElement.dataset.appEnvironment = appRuntime.environment;
+rootElement.dataset.firebaseMode = appRuntime.firebase.mode;
+rootElement.dataset.firebaseProject = appRuntime.firebase.config.projectId;
+
+const root = ReactDOM.createRoot(rootElement);
 root.render(
     <React.StrictMode>
         <DevSupport ComponentPreviews={ComponentPreviews}
