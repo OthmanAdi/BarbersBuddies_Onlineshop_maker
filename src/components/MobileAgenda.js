@@ -15,6 +15,7 @@ import {
 } from 'date-fns';
 import {collection, getDocs, orderBy, query, where} from 'firebase/firestore';
 import {db} from '../firebase';
+import {parseCivilDate, parseCivilTime, serializeCivilDate} from '../booking-v2/civilTime';
 
 // Reuse the same ViewOptions enum
 const ViewOptions = {
@@ -24,15 +25,7 @@ const ViewOptions = {
     MONTHS: 'months'
 };
 
-// First, add this helper function at the top with the other utility functions
-const roundToNearestSlot = (time) => {
-    const [hours, minutes] = time.split(':').map(Number);
-    const roundedMinutes = Math.round(minutes / 15) * 15;
-    return `${hours.toString().padStart(2, '0')}:${roundedMinutes.toString().padStart(2, '0')}`;
-};
-
-// Replace the current generateTimeSlots function with this one
-const generateTimeSlots = () => {
+export const generateMobileTimeSlots = () => {
     const slots = [];
     for (let hour = 9; hour <= 21; hour++) {
         for (let minutes = 0; minutes < 60; minutes += 15) {
@@ -41,6 +34,66 @@ const generateTimeSlots = () => {
     }
     return slots;
 };
+
+const TIME_SLOTS = Object.freeze(generateMobileTimeSlots());
+const TIME_SLOT_SET = new Set(TIME_SLOTS);
+
+export const civilDateForLocalDate = (date) => serializeCivilDate(
+    date.getFullYear(),
+    date.getMonth() + 1,
+    date.getDate()
+);
+
+export const appointmentMatchesDate = (appointment, date) => {
+    try {
+        parseCivilDate(appointment?.selectedDate);
+        return appointment.selectedDate === civilDateForLocalDate(date);
+    } catch {
+        return false;
+    }
+};
+
+export const partitionMobileAgendaAppointments = (appointments, selectedDate) => {
+    const selectedCivilDate = civilDateForLocalDate(selectedDate);
+    const bySlot = Object.fromEntries(TIME_SLOTS.map((time) => [time, []]));
+    const overflow = [];
+    const invalidTime = [];
+    const invalidDate = [];
+
+    appointments.forEach((appointment) => {
+        try {
+            parseCivilDate(appointment?.selectedDate);
+        } catch {
+            invalidDate.push(appointment);
+            return;
+        }
+
+        if (appointment.selectedDate !== selectedCivilDate) return;
+
+        try {
+            parseCivilTime(appointment?.selectedTime);
+        } catch {
+            invalidTime.push(appointment);
+            return;
+        }
+
+        if (TIME_SLOT_SET.has(appointment.selectedTime)) {
+            bySlot[appointment.selectedTime].push(appointment);
+        } else {
+            overflow.push(appointment);
+        }
+    });
+
+    return {bySlot, overflow, invalidTime, invalidDate};
+};
+
+const safeCustomerName = (appointment) => (
+    typeof appointment?.userName === 'string' && appointment.userName.trim()
+        ? appointment.userName
+        : 'Unknown customer'
+);
+
+const safeCivilValue = (value, fallback) => typeof value === 'string' ? value : fallback;
 
 const Calendar = ({ selectedDate, onSelect }) => {
     const today = new Date();
@@ -131,6 +184,7 @@ const Calendar = ({ selectedDate, onSelect }) => {
 
 // Mobile-optimized appointment card
 const MobileAppointmentCard = ({appointment}) => {
+    const customerName = safeCustomerName(appointment);
     const totalCost = appointment.selectedServices?.reduce((sum, service) =>
         sum + (parseFloat(service.price) || 0), 0) || 0;
 
@@ -149,11 +203,11 @@ const MobileAppointmentCard = ({appointment}) => {
             <div className="flex items-center space-x-3">
                 <div className="avatar">
                     <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
-                        <span className="text-primary font-medium">{appointment.userName.charAt(0)}</span>
+                        <span className="text-primary font-medium">{customerName.charAt(0)}</span>
                     </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                    <h4 className="font-medium truncate">{appointment.userName}</h4>
+                    <h4 className="font-medium truncate">{customerName}</h4>
                     <p className="text-sm text-base-content/60 truncate">{appointment.userEmail}</p>
                 </div>
                 <div className="badge badge-primary">€{totalCost}</div>
@@ -162,7 +216,7 @@ const MobileAppointmentCard = ({appointment}) => {
             <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="p-2 bg-base-300 rounded-lg">
                     <span className="block text-xs text-base-content/60">Time</span>
-                    <span className="font-medium">{appointment.selectedTime}</span>
+                    <span className="font-medium">{safeCivilValue(appointment.selectedTime, 'Invalid time')}</span>
                 </div>
                 <div className="p-2 bg-base-300 rounded-lg">
                     <span className="block text-xs text-base-content/60">Duration</span>
@@ -178,18 +232,83 @@ const MobileAppointmentCard = ({appointment}) => {
     );
 };
 
+const MobileAgendaExceptions = ({overflow, invalidTime}) => {
+    const exceptions = [
+        ...overflow.map((appointment) => ({appointment, reason: 'Outside the visible 15-minute agenda grid'})),
+        ...invalidTime.map((appointment) => ({appointment, reason: 'Invalid legacy time'}))
+    ];
+
+    if (exceptions.length === 0) return null;
+
+    return (
+        <section className="m-4 rounded-xl border border-warning/50 bg-warning/10 p-4" aria-labelledby="mobile-agenda-exceptions-heading">
+            <h3 id="mobile-agenda-exceptions-heading" className="font-semibold">
+                Unscheduled / agenda exceptions
+            </h3>
+            <p className="mt-1 text-sm text-base-content/70">
+                These appointments remain visible but cannot be placed on the fixed 09:00–21:45 grid.
+            </p>
+            <ul className="mt-3 space-y-3">
+                {exceptions.map(({appointment, reason}, index) => (
+                    <li key={appointment?.id || `mobile-agenda-exception-${index}`}>
+                        <p className="mb-1 text-sm font-medium">
+                            {reason}: {safeCivilValue(appointment?.selectedTime, 'missing time')}
+                        </p>
+                        <MobileAppointmentCard appointment={appointment}/>
+                    </li>
+                ))}
+            </ul>
+        </section>
+    );
+};
+
+export const MobileInvalidDateAppointments = ({appointments}) => {
+    const invalidDate = appointments.filter((appointment) => {
+        try {
+            parseCivilDate(appointment?.selectedDate);
+            return false;
+        } catch {
+            return true;
+        }
+    });
+
+    if (invalidDate.length === 0) return null;
+
+    return (
+        <section className="m-4 rounded-xl border border-error/50 bg-error/10 p-4" aria-labelledby="mobile-agenda-invalid-dates-heading">
+            <h3 id="mobile-agenda-invalid-dates-heading" className="font-semibold">
+                Unresolved legacy appointment dates
+            </h3>
+            <p className="mt-1 text-sm text-base-content/70">
+                These records have no canonical YYYY-MM-DD date and cannot be assigned to a calendar day.
+            </p>
+            <ul className="mt-3 space-y-3">
+                {invalidDate.map((appointment, index) => (
+                    <li key={appointment?.id || `mobile-invalid-date-${index}`}>
+                        <p className="mb-1 text-sm font-medium">
+                            Invalid date: {safeCivilValue(appointment?.selectedDate, 'missing date')}
+                        </p>
+                        <MobileAppointmentCard appointment={appointment}/>
+                    </li>
+                ))}
+            </ul>
+        </section>
+    );
+};
+
 // Mobile view components
-const MobileTimeSlotView = ({appointments, selectedDate}) => (
+export const MobileTimeSlotView = ({appointments, selectedDate}) => {
+    const {bySlot, overflow, invalidTime} = partitionMobileAgendaAppointments(appointments, selectedDate);
+
+    return (
+    <>
     <div className="relative">
         {/* Time axis */}
         <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-base-100 to-transparent" />
         
         <div className="pl-16 pr-4">
-            {generateTimeSlots().map((time) => {
-                const timeAppointments = appointments.filter(
-                    app => roundToNearestSlot(app.selectedTime) === time && 
-                           isSameDay(new Date(app.selectedDate), selectedDate)
-                );
+            {TIME_SLOTS.map((time) => {
+                const timeAppointments = bySlot[time];
 
                 return (
                     <div key={time} className="relative">
@@ -224,12 +343,15 @@ const MobileTimeSlotView = ({appointments, selectedDate}) => (
             })}
         </div>
     </div>
-);
+    <MobileAgendaExceptions overflow={overflow} invalidTime={invalidTime}/>
+    </>
+    );
+};
 
 const MobileDayView = ({appointments, selectedDate}) => (
     <div className="space-y-4 p-4">
         {appointments
-            .filter(app => isSameDay(new Date(app.selectedDate), selectedDate))
+            .filter(app => appointmentMatchesDate(app, selectedDate))
             .map(appointment => (
                 <MobileAppointmentCard key={appointment.id} appointment={appointment}/>
             ))}
@@ -249,7 +371,7 @@ const MobileWeekView = ({appointments, selectedDate}) => {
                         {format(day, 'EEEE, MMM d')}
                     </h3>
                     {appointments
-                        .filter(app => isSameDay(new Date(app.selectedDate), day))
+                        .filter(app => appointmentMatchesDate(app, day))
                         .map(appointment => (
                             <MobileAppointmentCard key={appointment.id} appointment={appointment}/>
                         ))}
@@ -299,7 +421,7 @@ const MobileMonthView = ({appointments, selectedDate}) => {
 
                     {days.map(day => {
                         const dayAppointments = appointments.filter(
-                            app => isSameDay(new Date(app.selectedDate), day)
+                            app => appointmentMatchesDate(app, day)
                         );
 
                         return (
@@ -388,7 +510,7 @@ const MobileMonthView = ({appointments, selectedDate}) => {
                             <div className="max-h-[70vh] overflow-y-auto p-4 space-y-4">
                                 {selectedDayAppointments.length > 0 ? (
                                     selectedDayAppointments
-                                        .sort((a, b) => a.selectedTime.localeCompare(b.selectedTime))
+                                        .sort((a, b) => safeCivilValue(a.selectedTime, '').localeCompare(safeCivilValue(b.selectedTime, '')))
                                         .map(appointment => (
                                             <MobileAppointmentCard
                                                 key={appointment.id}
@@ -624,6 +746,7 @@ const MobileAgenda = ({user}) => {
                         transition={{duration: 0.2}}
                     >
                         {renderView()}
+                        <MobileInvalidDateAppointments appointments={appointments}/>
                     </motion.div>
                 </AnimatePresence>
             </main>

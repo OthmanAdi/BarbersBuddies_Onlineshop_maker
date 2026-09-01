@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format, addMonths, addWeeks, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
+import { parseCivilDate, parseCivilTime, serializeCivilDate } from '../booking-v2/civilTime';
 
 const ViewOptions = {
     HOURS: 'hours',
@@ -11,7 +12,7 @@ const ViewOptions = {
     MONTHS: 'months'
 };
 
-const generateTimeSlots = () => {
+export const generateTimeSlots = () => {
     const slots = [];
     for (let hour = 9; hour <= 21; hour++) {
         for (let minutes = 0; minutes < 60; minutes += 15) {
@@ -21,15 +22,137 @@ const generateTimeSlots = () => {
     return slots;
 };
 
-const roundToNearestSlot = (time) => {
-    const [hours, minutes] = time.split(':').map(Number);
-    const roundedMinutes = Math.round(minutes / 15) * 15;
-    return `${hours.toString().padStart(2, '0')}:${roundedMinutes.toString().padStart(2, '0')}`;
+const TIME_SLOTS = Object.freeze(generateTimeSlots());
+const TIME_SLOT_SET = new Set(TIME_SLOTS);
+
+export const civilDateForLocalDate = (date) => serializeCivilDate(
+    date.getFullYear(),
+    date.getMonth() + 1,
+    date.getDate()
+);
+
+export const appointmentMatchesDate = (appointment, date) => {
+    try {
+        parseCivilDate(appointment?.selectedDate);
+        return appointment.selectedDate === civilDateForLocalDate(date);
+    } catch {
+        return false;
+    }
 };
 
-const TimeSlotView = ({ appointments, selectedDate }) => (
+export const partitionAgendaAppointments = (appointments, selectedDate) => {
+    const selectedCivilDate = civilDateForLocalDate(selectedDate);
+    const bySlot = Object.fromEntries(TIME_SLOTS.map((time) => [time, []]));
+    const overflow = [];
+    const invalidTime = [];
+    const invalidDate = [];
+
+    appointments.forEach((appointment) => {
+        try {
+            parseCivilDate(appointment?.selectedDate);
+        } catch {
+            invalidDate.push(appointment);
+            return;
+        }
+
+        if (appointment.selectedDate !== selectedCivilDate) return;
+
+        try {
+            parseCivilTime(appointment?.selectedTime);
+        } catch {
+            invalidTime.push(appointment);
+            return;
+        }
+
+        if (TIME_SLOT_SET.has(appointment.selectedTime)) {
+            bySlot[appointment.selectedTime].push(appointment);
+        } else {
+            overflow.push(appointment);
+        }
+    });
+
+    return { bySlot, overflow, invalidTime, invalidDate };
+};
+
+const safeCustomerName = (appointment) => (
+    typeof appointment?.userName === 'string' && appointment.userName.trim()
+        ? appointment.userName
+        : 'Unknown customer'
+);
+
+const safeCivilValue = (value, fallback) => typeof value === 'string' ? value : fallback;
+
+const AgendaExceptions = ({ overflow, invalidTime }) => {
+    const exceptions = [
+        ...overflow.map((appointment) => ({ appointment, reason: 'Outside the visible 15-minute agenda grid' })),
+        ...invalidTime.map((appointment) => ({ appointment, reason: 'Invalid legacy time' }))
+    ];
+
+    if (exceptions.length === 0) return null;
+
+    return (
+        <section className="m-4 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30" aria-labelledby="agenda-exceptions-heading">
+            <h3 id="agenda-exceptions-heading" className="font-semibold text-amber-900 dark:text-amber-100">
+                Unscheduled / agenda exceptions
+            </h3>
+            <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
+                These appointments remain visible but cannot be placed on the fixed 09:00–21:45 grid.
+            </p>
+            <ul className="mt-3 space-y-3">
+                {exceptions.map(({ appointment, reason }, index) => (
+                    <li key={appointment?.id || `agenda-exception-${index}`}>
+                        <p className="mb-1 text-sm font-medium text-amber-900 dark:text-amber-100">
+                            {reason}: {safeCivilValue(appointment?.selectedTime, 'missing time')}
+                        </p>
+                        <AppointmentCard appointment={appointment} expanded />
+                    </li>
+                ))}
+            </ul>
+        </section>
+    );
+};
+
+export const InvalidDateAppointments = ({ appointments }) => {
+    const invalidDate = appointments.filter((appointment) => {
+        try {
+            parseCivilDate(appointment?.selectedDate);
+            return false;
+        } catch {
+            return true;
+        }
+    });
+
+    if (invalidDate.length === 0) return null;
+
+    return (
+        <section className="m-4 rounded-lg border border-red-300 bg-red-50 p-4 dark:border-red-700 dark:bg-red-950/30" aria-labelledby="agenda-invalid-dates-heading">
+            <h3 id="agenda-invalid-dates-heading" className="font-semibold text-red-900 dark:text-red-100">
+                Unresolved legacy appointment dates
+            </h3>
+            <p className="mt-1 text-sm text-red-800 dark:text-red-200">
+                These records have no canonical YYYY-MM-DD date and cannot be assigned to a calendar day.
+            </p>
+            <ul className="mt-3 space-y-3">
+                {invalidDate.map((appointment, index) => (
+                    <li key={appointment?.id || `invalid-date-${index}`}>
+                        <p className="mb-1 text-sm font-medium text-red-900 dark:text-red-100">
+                            Invalid date: {safeCivilValue(appointment?.selectedDate, 'missing date')}
+                        </p>
+                        <AppointmentCard appointment={appointment} expanded />
+                    </li>
+                ))}
+            </ul>
+        </section>
+    );
+};
+
+export const TimeSlotView = ({ appointments, selectedDate }) => {
+    const { bySlot, overflow, invalidTime } = partitionAgendaAppointments(appointments, selectedDate);
+
+    return (
+    <>
     <div className="grid grid-cols-1 gap-2 py-4">
-        {generateTimeSlots().map((time) => (
+        {TIME_SLOTS.map((time) => (
             <motion.div
                 key={time}
                 initial={{ opacity: 0, x: -20 }}
@@ -42,10 +165,7 @@ const TimeSlotView = ({ appointments, selectedDate }) => (
                 </div>
                 <div className="ml-16 space-y-2">
                     <AnimatePresence>
-                    {appointments
-    .filter(app => roundToNearestSlot(app.selectedTime) === time && 
-           isSameDay(new Date(app.selectedDate), selectedDate))
-    .map(appointment => (
+                    {bySlot[time].map(appointment => (
         <AppointmentCard 
             key={appointment.id} 
             appointment={appointment} 
@@ -56,13 +176,16 @@ const TimeSlotView = ({ appointments, selectedDate }) => (
             </motion.div>
         ))}
     </div>
-);
+    <AgendaExceptions overflow={overflow} invalidTime={invalidTime} />
+    </>
+    );
+};
 
 const DayView = ({ appointments, selectedDate }) => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
         <AnimatePresence>
             {appointments
-                .filter(app => isSameDay(new Date(app.selectedDate), selectedDate))
+                .filter(app => appointmentMatchesDate(app, selectedDate))
                 .map(appointment => (
                     <AppointmentCard key={appointment.id} appointment={appointment} expanded />
                 ))}
@@ -87,7 +210,7 @@ const WeekView = ({ appointments, selectedDate }) => {
                     <div className="space-y-2 p-1">
                         <AnimatePresence>
                             {appointments
-                                .filter(app => isSameDay(new Date(app.selectedDate), day))
+                                .filter(app => appointmentMatchesDate(app, day))
                                 .map(appointment => (
                                     <AppointmentCard
                                         key={appointment.id}
@@ -124,7 +247,7 @@ const MonthView = ({ appointments, selectedDate }) => {
                     <span className="text-sm font-medium">{format(day, 'd')}</span>
                     <div className="space-y-1 mt-1 max-h-[80px] overflow-y-auto">
                         {appointments
-                            .filter(app => isSameDay(new Date(app.selectedDate), day))
+                            .filter(app => appointmentMatchesDate(app, day))
                             .map(appointment => (
                                 <motion.div
                                     key={appointment.id}
@@ -143,6 +266,7 @@ const MonthView = ({ appointments, selectedDate }) => {
 };
 
 const AppointmentCard = ({ appointment, compact = false, expanded = false }) => {
+    const customerName = safeCustomerName(appointment);
     const variants = {
         initial: { scale: 0.95, opacity: 0 },
         animate: { scale: 1, opacity: 1 },
@@ -174,10 +298,10 @@ const AppointmentCard = ({ appointment, compact = false, expanded = false }) => 
             <div className="flex items-start justify-between">
                 <div className="flex items-center space-x-2">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
-                        {appointment.userName.charAt(0)}
+                        {customerName.charAt(0)}
                     </div>
                     <div>
-                        <h4 className="font-medium truncate">{appointment.userName}</h4>
+                        <h4 className="font-medium truncate">{customerName}</h4>
                         {!compact && (
                             <p className="text-sm text-gray-600 dark:text-gray-400">
                                 {primaryService}
@@ -197,7 +321,7 @@ const AppointmentCard = ({ appointment, compact = false, expanded = false }) => 
                     <p>With: {appointment.employeeName || 'Any Available'}</p>
                     <p>Duration: {totalDuration} min</p>
                     <div className="flex items-center justify-between mt-2">
-                        <span>{appointment.selectedTime}</span>
+                        <span>{safeCivilValue(appointment.selectedTime, 'Invalid time')}</span>
                         <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100">
                             {appointment.status || 'pending'}
                         </span>
@@ -526,6 +650,7 @@ const CustomAgenda = ({ user }) => {
                             transition={{duration: 0.2}}
                         >
                             {renderView()}
+                            <InvalidDateAppointments appointments={appointments} />
                         </motion.div>
                     </AnimatePresence>
                 </main>
