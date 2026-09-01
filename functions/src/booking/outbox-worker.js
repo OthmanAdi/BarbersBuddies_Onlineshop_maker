@@ -136,7 +136,7 @@ function validateSafeOutboxDocument(documentId, data) {
     !isNonEmptyString(data.shopId) ||
     !isNonEmptyString(data.commandId) ||
     !isNonEmptyString(data.eventId) ||
-    !Number.isInteger(data.bookingVersion) ||
+    !Number.isSafeInteger(data.bookingVersion) ||
     data.bookingVersion < 1 ||
     !Number.isInteger(data.attempts) ||
     data.attempts < 0 ||
@@ -146,6 +146,12 @@ function validateSafeOutboxDocument(documentId, data) {
     return false;
   }
   const eventType = data.eventType.replace(/\.(customer|shop)-email$/u, '');
+  if (
+    (eventType === 'booking.created' && data.bookingVersion !== 1) ||
+    (eventType !== 'booking.created' && data.bookingVersion < 2)
+  ) {
+    return false;
+  }
   const expectedEventId = sha256Canonical({
     scope: 'booking-event:v2',
     bookingId: data.bookingId,

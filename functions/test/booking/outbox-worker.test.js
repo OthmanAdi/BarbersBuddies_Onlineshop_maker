@@ -34,6 +34,10 @@ function validDocument(overrides = {}) {
     updatedAt: new Date('2026-09-01T10:00:00.000Z'),
     ...overrides,
   };
+  if (!Object.hasOwn(overrides, 'bookingVersion')) {
+    document.bookingVersion = typeof document.eventType === 'string' &&
+      /^booking\.(cancelled|rescheduled)\./u.test(document.eventType) ? 2 : 1;
+  }
   if (Object.hasOwn(overrides, 'state') && overrides.state !== 'pending' && overrides.state !== 'retry') {
     delete document.availableAt;
   }
@@ -103,6 +107,46 @@ test('the exact event, channel, and audience matrix is accepted', () => {
   }
 });
 
+test('event operation and booking version invariants fail closed at lifecycle boundaries', () => {
+  for (const audience of ['customer', 'shop']) {
+    const suffix = `${audience}-email`;
+    assert.equal(validateOutboxDocument('outbox-1', validDocument({
+      eventType: `booking.created.${suffix}`, audience, bookingVersion: 0,
+    })), false);
+    assert.equal(validateOutboxDocument('outbox-1', validDocument({
+      eventType: `booking.created.${suffix}`, audience, bookingVersion: 1,
+    })), true);
+    assert.equal(validateOutboxDocument('outbox-1', validDocument({
+      eventType: `booking.created.${suffix}`, audience, bookingVersion: 2,
+    })), false);
+    assert.equal(validateOutboxDocument('outbox-1', validDocument({
+      eventType: `booking.created.${suffix}`, audience, bookingVersion: Number.MAX_SAFE_INTEGER,
+    })), false);
+
+    for (const operation of ['cancelled', 'rescheduled']) {
+      const eventType = `booking.${operation}.${suffix}`;
+      assert.equal(validateOutboxDocument('outbox-1', validDocument({
+        eventType, audience, bookingVersion: 0,
+      })), false);
+      assert.equal(validateOutboxDocument('outbox-1', validDocument({
+        eventType, audience, bookingVersion: 1,
+      })), false);
+      assert.equal(validateOutboxDocument('outbox-1', validDocument({
+        eventType, audience, bookingVersion: 2,
+      })), true);
+      assert.equal(validateOutboxDocument('outbox-1', validDocument({
+        eventType, audience, bookingVersion: 3,
+      })), true);
+      assert.equal(validateOutboxDocument('outbox-1', validDocument({
+        eventType, audience, bookingVersion: Number.MAX_SAFE_INTEGER,
+      })), true);
+      assert.equal(validateOutboxDocument('outbox-1', validDocument({
+        eventType, audience, bookingVersion: Number.MAX_SAFE_INTEGER + 1,
+      })), false);
+    }
+  }
+});
+
 test('unknown events, mismatched audiences, channels, and extra payload fields fail closed', () => {
   assert.equal(validateOutboxDocument('outbox-1', validDocument({ eventType: 'booking.created' })), false);
   assert.equal(validateOutboxDocument('outbox-1', validDocument({ audience: 'shop' })), false);
@@ -153,8 +197,19 @@ test('hostile proxies and accessors fail closed without invoking attacker text',
   const hostileEvent = validDocument({
     eventType: { [Symbol.toPrimitive]: () => { throw new Error(marker); } },
   });
+  let hostileVersionReads = 0;
+  const hostileVersion = new Proxy({}, {
+    get() {
+      hostileVersionReads += 1;
+      throw new Error(marker);
+    },
+  });
+  const hostileVersionDocument = validDocument({ bookingVersion: hostileVersion });
   assert.doesNotThrow(() => validateOutboxDocument('outbox-1', hostileEvent));
   assert.equal(validateOutboxDocument('outbox-1', hostileEvent), false);
+  assert.doesNotThrow(() => validateOutboxDocument('outbox-1', hostileVersionDocument));
+  assert.equal(validateOutboxDocument('outbox-1', hostileVersionDocument), false);
+  assert.equal(hostileVersionReads, 0);
 });
 
 test('a hostile injected document is quarantined without calling resolver or provider', async () => {
