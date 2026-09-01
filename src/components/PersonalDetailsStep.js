@@ -2,6 +2,7 @@ import React from 'react';
 import {motion} from 'framer-motion';
 import PhoneInput from 'react-phone-input-2';
 import 'react-phone-input-2/lib/style.css';
+import {formatCivilDate} from '../booking-v2/civilDatePresentation';
 
 const PersonalDetailsStep = ({
                                  userName,
@@ -159,7 +160,7 @@ const PersonalDetailsStep = ({
                                             <span className="opacity-70">{t.date}</span>
                                         </div>
                                         <span
-                                            className="font-medium">{new Date(selectedDate).toLocaleDateString()}</span>
+                                            className="font-medium">{formatCivilDate(selectedDate)}</span>
                                     </div>
 
                                     <div
@@ -179,7 +180,7 @@ const PersonalDetailsStep = ({
 
                                     {/* Services List */}
                                     <div className="space-y-2">
-                                        {selectedServices.map((service) => (<div key={service.name}
+                                        {selectedServices.map((service) => (<div key={service.id || `legacy:${service.name}`}
                                                                                  className="flex items-center justify-between text-sm bg-base-200/50 p-3 rounded-lg hover:bg-base-200 transition-colors duration-200">
                                                 <span className="font-medium">{service.name}</span>
                                                 <span className="font-semibold text-primary">€{service.price}</span>

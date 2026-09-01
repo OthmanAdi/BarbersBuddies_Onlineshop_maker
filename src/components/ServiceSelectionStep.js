@@ -37,6 +37,8 @@
 import React from 'react';
 import {motion} from 'framer-motion';
 
+const serviceSelectionKey = (service) => service.id || `legacy:${service.name}`;
+
 const ServiceSelectionStep = ({
                                   services,
                                   selectedServices,
@@ -58,12 +60,12 @@ const ServiceSelectionStep = ({
                 <div className="card-body">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {services.map((service, index) => (<motion.div
-                                key={service.name}
+                                key={serviceSelectionKey(service)}
                                 initial={{opacity: 0, y: 20}}
                                 animate={{opacity: 1, y: 0}}
                                 transition={{delay: index * 0.1}}
                                 className={`card bg-base-200 hover:bg-base-300 transition-all cursor-pointer
-                ${selectedServices.some(s => s.name === service.name) ? 'ring-2 ring-primary' : ''}
+                ${selectedServices.some(s => serviceSelectionKey(s) === serviceSelectionKey(service)) ? 'ring-2 ring-primary' : ''}
               `}
                                 onClick={() => handleServiceChange(service)}
                             >
@@ -71,7 +73,9 @@ const ServiceSelectionStep = ({
                                     <div className="flex justify-between items-start">
                                         <div>
                                             <h3 className="font-semibold">{service.name}</h3>
-                                            <p className="text-sm opacity-70">{service.duration || '30 min'}</p>
+                                            <p className="text-sm opacity-70">
+                                                {service.durationMinutes ?? service.duration ?? 30} min
+                                            </p>
                                         </div>
                                         <span className="text-xl font-bold text-primary">€{service.price}</span>
                                     </div>
@@ -85,12 +89,12 @@ const ServiceSelectionStep = ({
                                     <h3 className="card-title text-lg">{t.selectedServices}</h3>
                                     <div className="space-y-2">
                                         {selectedServices.map((service) => (
-                                            <div key={service.name} className="flex justify-between items-center">
+                                            <div key={serviceSelectionKey(service)} className="flex justify-between items-center">
                                                 <span>{service.name}</span>
                                                 <div className="flex items-center gap-4">
                                                     <span>€{service.price}</span>
                                                     <button
-                                                        onClick={(e) => removeService(service.name, e)}
+                                                        onClick={(e) => removeService(serviceSelectionKey(service), e)}
                                                         className="btn btn-ghost btn-circle btn-sm"
                                                     >
                                                         ×

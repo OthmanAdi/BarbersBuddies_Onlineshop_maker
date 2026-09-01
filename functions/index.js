@@ -8,6 +8,7 @@ const {
     rescheduleBookingV2: rescheduleBookingV2Command
 } = require('./src/booking/mutations');
 const { createBookingHttpHandlers } = require('./src/booking/http');
+const { resolveBookingAllowedOrigins } = require('./src/booking/origins');
 const { withBookingV2Runtime } = require('./src/booking/runtime');
 
 admin.initializeApp();
@@ -36,12 +37,10 @@ const mg = mailgunApiKey
 
 const DOMAIN = mailgunConfig.domain || process.env.MAILGUN_DOMAIN || 'barbersbuddies.com';
 
-// CORS configuration - only allow trusted origins
-const ALLOWED_ORIGINS = [
-    'https://barbersbuddies.com',
-    'https://www.barbersbuddies.com',
-    'http://localhost:3000'  // For development
-];
+// Resolve the deployment boundary before constructing any HTTP handlers.
+// Production is HTTPS-only. Exact loopback origins are added only by the
+// Firebase Functions emulator runtime.
+const ALLOWED_ORIGINS = resolveBookingAllowedOrigins(process.env);
 
 const bookingV2Commands = {
     create: withBookingV2Runtime((input) => createBookingV2Command({

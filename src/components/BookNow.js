@@ -1,18 +1,6 @@
-import React, {useContext, useEffect, useMemo, useState} from 'react';
-import {useNavigate, useParams} from 'react-router-dom';
-import {
-    addDoc,
-    collection,
-    deleteDoc,
-    doc,
-    getDoc,
-    getDocs,
-    onSnapshot,
-    query,
-    serverTimestamp,
-    where,
-    writeBatch
-} from 'firebase/firestore';
+import React, {useContext, useEffect, useMemo, useRef, useState} from 'react';
+import {useParams, useSearchParams} from 'react-router-dom';
+import {doc, getDoc} from 'firebase/firestore';
 import {auth, db} from '../firebase';
 import { sanitizeHTML } from '../utils/sanitize';
 import {Swiper, SwiperSlide} from 'swiper/react';
@@ -26,7 +14,9 @@ import ReactConfetti from 'react-confetti';
 import {CheckCircleIcon, XCircleIcon} from '@heroicons/react/24/solid';
 import {motion} from 'framer-motion';
 import {onAuthStateChanged} from 'firebase/auth';
-import {format} from 'date-fns';
+import {iterateCivilSlots, weekdayForCivilDate} from '../booking-v2/civilTime';
+import {createPublicBookingV2Adapter} from '../booking-v2/createBookingAdapter';
+import {appRuntime} from '../runtime/currentAppRuntime';
 
 import 'swiper/css';
 import 'swiper/css/navigation';
@@ -36,14 +26,75 @@ import LoadingOverlay from "./LoadingOverlay";
 import EmployeeSelectionStep from "./EmployeeSelectionStep";
 import FooterPages from "./FooterPages";
 
+const buildAvailableTimes = (shop, localDate, selectedServices) => {
+    if (!shop || !localDate || selectedServices.length === 0) return [];
+
+    try {
+        const weekday = weekdayForCivilDate(localDate);
+        const legacyHours = shop.availability?.[weekday];
+        const canonicalIntervals = shop.weeklyAvailability?.[weekday.toLowerCase()];
+        const intervals = Array.isArray(canonicalIntervals)
+            ? canonicalIntervals
+            : legacyHours
+                ? [{startLocalTime: legacyHours.open, endLocalTime: legacyHours.close}]
+                : [];
+        const durationMinutes = selectedServices.reduce(
+            (sum, service) => sum + Number(service.durationMinutes ?? service.duration ?? 30),
+            0
+        );
+        const bufferBeforeMinutes = selectedServices.reduce(
+            (sum, service) => sum + Number(service.bufferBeforeMinutes ?? 0),
+            0
+        );
+        const bufferAfterMinutes = selectedServices.reduce(
+            (sum, service) => sum + Number(service.bufferAfterMinutes ?? 0),
+            0
+        );
+        const incrementMinutes = Number(legacyHours?.slotDuration ?? 30);
+        const slots = intervals.flatMap((interval) => iterateCivilSlots(
+            interval.startLocalTime,
+            interval.endLocalTime,
+            incrementMinutes,
+            durationMinutes,
+            bufferBeforeMinutes,
+            bufferAfterMinutes
+        ));
+        return [...new Set(slots)];
+    } catch {
+        return [];
+    }
+};
+
+const bookingErrorMessage = (error, translations) => {
+    const shopSetupCodes = new Set([
+        'BOOKING_POLICY_REQUIRED',
+        'STABLE_SERVICE_ID_REQUIRED',
+        'STABLE_EMPLOYEE_ID_REQUIRED',
+        'INVALID_BOOKING_IDENTIFIER',
+        'INVALID_CLIENT_CONFIGURATION'
+    ]);
+    if (shopSetupCodes.has(error?.code) || String(error?.code || '').startsWith('BOOKING_V2_')) {
+        return 'This shop is not ready for online booking yet.';
+    }
+    if (
+        typeof error?.message === 'string' &&
+        ['BookingCommandClientError', 'CreateBookingAdapterError'].includes(error?.name)
+    ) {
+        return error.message;
+    }
+    return translations.bookingFailed;
+};
+
+const serviceSelectionKey = (service) => service.id || `legacy:${service.name}`;
+
 const BookNow = () => {
     const {language} = useContext(LanguageContext);
     const {shopId} = useParams();
+    const [searchParams] = useSearchParams();
     const [shop, setShop] = useState(null);
     const [loading, setLoading] = useState(true);
     const [selectedDate, setSelectedDate] = useState('');
     const [selectedServices, setSelectedServices] = useState([]);
-    const [customService, setCustomService] = useState('');
     const [selectedTime, setSelectedTime] = useState('');
     const [userName, setUserName] = useState('');
     const [userEmail, setUserEmail] = useState('');
@@ -53,46 +104,31 @@ const BookNow = () => {
     const [step, setStep] = useState(1);
     const [availableTimes, setAvailableTimes] = useState([]);
     const [selectedServiceCategory, setSelectedServiceCategory] = useState('all');
-    const [statusType, setStatusType] = useState(null);
-    const navigate = useNavigate();
-    const [blockedTimeSlots, setBlockedTimeSlots] = useState([]);
+    const blockedTimeSlots = useMemo(() => [], []);
     const [selectedEmployee, setSelectedEmployee] = useState(null);
+    const bookingRequestInFlight = useRef(false);
 
     const steps = ['Services', 'Employee', 'DateTime', 'Details'];
 
-    useEffect(() => {
-        if (!selectedDate || !shopId) return;
-
-        const blockedSlotsRef = collection(db, 'bookedTimeSlots');
-        const q = query(
-            blockedSlotsRef,
-            where('shopId', '==', shopId),
-            where('date', '==', selectedDate),
-            where('status', 'in', ['booked', 'pending']),
-            // Add employee filter when an employee is selected
-            ...(selectedEmployee ? [where('employeeId', '==', selectedEmployee.id)] : [])
-        );
-
-        // Replace getDocs with onSnapshot
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const blockedSlots = querySnapshot.docs.map(doc => doc.data().time);
-            console.log('Currently blocked slots:', blockedSlots);
-            setBlockedTimeSlots(blockedSlots);
-        });
-
-        return () => unsubscribe(); // Cleanup listener
-    }, [selectedDate, shopId]);
-
-    // Add this right after your other useState declarations in BookNow component
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            if (user) {
-                setUserEmail(user.email);  // Pre-populate email
-                setUserName(user.displayName || '');  // Optional: also pre-populate name if available
-            }
-        });
-
-        return () => unsubscribe();
+    const bookingAdapter = useMemo(() => {
+        try {
+            return createPublicBookingV2Adapter({
+                runtime: appRuntime,
+                environment: process.env,
+                fetchImpl: window.fetch.bind(window),
+                storage: window.localStorage,
+                cryptoImpl: window.crypto,
+                TextEncoderImpl: window.TextEncoder,
+                getIdToken: async () => {
+                    if (!auth.currentUser) throw new Error('No authenticated booking session.');
+                    return auth.currentUser.getIdToken();
+                },
+                createAuthMode: 'guest'
+            });
+        } catch (error) {
+            console.error('Booking v2 runtime is unavailable:', error?.code || 'configuration-error');
+            return null;
+        }
     }, []);
 
     const [windowSize, setWindowSize] = useState({
@@ -130,10 +166,6 @@ const BookNow = () => {
                 if (shopDoc.exists()) {
                     const shopData = {id: shopDoc.id, ...shopDoc.data()};
                     setShop(shopData);
-                    // Generate time slots based on shop availability
-                    if (selectedDate) {
-                        generateTimeSlots(shopData.availability, selectedDate);
-                    }
                 }
             } catch (error) {
                 console.error('Error fetching shop data:', error);
@@ -144,75 +176,52 @@ const BookNow = () => {
 
         fetchShopData();
     }, [shopId]);
-
-    useEffect(() => {
-        const fetchShopData = async () => {
-            try {
-                const shopDoc = await getDoc(doc(db, 'barberShops', shopId));
-                if (shopDoc.exists()) {
-                    const shopData = {id: shopDoc.id, ...shopDoc.data()};
-                    console.log("Shop data loaded:", shopData); // Add this log
-                    console.log("Employees:", shopData.employees); // Add this log
-                    setShop(shopData);
-                    if (selectedDate) {
-                        generateTimeSlots(shopData.availability, selectedDate);
-                    }
-                }
-            } catch (error) {
-                console.error('Error fetching shop data:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchShopData();
-    }, [shopId]);
-
-    // Generate available time slots based on shop hours
-    const generateTimeSlots = (availability, date) => {
-        const dayOfWeek = new Date(date).toLocaleDateString('en-US', {weekday: 'long'});
-        const hours = availability[dayOfWeek];
-
-        if (!hours) {
-            setAvailableTimes([]);
-            return;
-        }
-
-        const slots = [];
-        const [startHour, startMinute] = hours.open.split(':').map(Number);
-        const [endHour, endMinute] = hours.close.split(':').map(Number);
-
-        const startTime = startHour * 60 + startMinute;
-        const endTime = endHour * 60 + endMinute;
-        const slotDuration = hours.slotDuration || 30; // Get the day's slotDuration or default to 30
-
-        for (let time = startTime; time < endTime; time += slotDuration) {
-            const hour = Math.floor(time / 60);
-            const minute = time % 60;
-            slots.push(`${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
-        }
-
-        setAvailableTimes(slots);
-    };
 
     // Update time slots when date changes
     useEffect(() => {
         if (shop && selectedDate) {
-            generateTimeSlots(shop.availability, selectedDate);
+            setAvailableTimes(buildAvailableTimes(shop, selectedDate, selectedServices));
         }
-    }, [selectedDate, shop]);
+    }, [selectedDate, selectedServices, shop]);
+
+    useEffect(() => {
+        if (!shop) return;
+        const serviceParam = searchParams.get('service');
+        const employeeParam = searchParams.get('employee');
+
+        if (serviceParam) {
+            const requestedService = shop.services?.find(
+                (service) => service.id === serviceParam || service.name === serviceParam
+            );
+            if (requestedService) {
+                setSelectedServices((current) => current.length === 0 ? [requestedService] : current);
+            }
+        }
+        if (employeeParam) {
+            const requestedEmployee = shop.employees?.find((employee) => employee.id === employeeParam);
+            if (requestedEmployee) {
+                setSelectedEmployee((current) => current || requestedEmployee);
+            }
+        }
+    }, [searchParams, shop]);
+
+    useEffect(() => {
+        if (step === 2 && Array.isArray(shop?.employees) && shop.employees.length === 0) {
+            setStep(3);
+        }
+    }, [shop, step]);
 
     // Handle service selection
     const handleServiceChange = (service) => {
-        if (!selectedServices.some(s => s.name === service.name)) {
+        if (!selectedServices.some(s => serviceSelectionKey(s) === serviceSelectionKey(service))) {
             setSelectedServices([...selectedServices, service]);
         }
     };
 
     // Remove service
-    const removeService = (serviceName, e) => {
+    const removeService = (serviceId, e) => {
         e.preventDefault();
-        setSelectedServices(selectedServices.filter(service => service.name !== serviceName));
+        setSelectedServices(selectedServices.filter(service => serviceSelectionKey(service) !== serviceId));
     };
 
     // Form submission
@@ -226,7 +235,6 @@ const BookNow = () => {
 
         // Check for required fields including phone
         if (!userName || !userEmail || !selectedDate || selectedServices.length === 0 || !selectedTime) {
-            setStatusType('error');
             setBookingStatus({
                 type: 'error',
                 message: t.fillAllFields
@@ -236,7 +244,6 @@ const BookNow = () => {
 
         // Add phone number validation
         if (!userPhone || userPhone.replace(/\D/g, '').length < 6) {  // Remove non-digits and check length
-            setStatusType('error');
             setBookingStatus({
                 type: 'error',
                 message: 'Please enter a valid phone number'
@@ -244,185 +251,44 @@ const BookNow = () => {
             return;
         }
 
-        setIsLoading(true);
-        setBookingStatus('');
-
-        // First, try to reserve the time slot
-        let timeSlotDocRef;
-        try {
-            if (selectedEmployee) {
-                // Add employee-specific availability check
-                const employeeSchedule = selectedEmployee.schedule[new Date(selectedDate).toLocaleDateString('en-US', {weekday: 'long'})];
-                const selectedHour = parseInt(selectedTime.split(':')[0]);
-
-                if (!employeeSchedule || !employeeSchedule.includes(selectedHour)) {
-                    throw new Error('Selected time is not available for this stylist');
-                }
-            }
-
-            // Check if slot is already taken - now with employee-specific check
-            const timeSlotQuery = query(
-                collection(db, 'bookedTimeSlots'),
-                where('shopId', '==', shop.id),
-                where('date', '==', selectedDate),
-                where('time', '==', selectedTime),
-                where('status', 'in', ['booked', 'pending']),
-                ...(selectedEmployee ? [where('employeeId', '==', selectedEmployee.id)] : [])
-            );
-
-            console.log("Checking availability with query:", {
-                shopId: shop.id,
-                date: selectedDate,
-                time: selectedTime,
-                employeeId: selectedEmployee?.id
-            });
-
-            const existingSlots = await getDocs(timeSlotQuery);
-
-            console.log("Existing slots found:", existingSlots.docs.map(doc => doc.data()));
-
-            if (!existingSlots.empty) {
-                throw new Error('This time slot has just been taken. Please select another time.');
-            }
-
-            // Create the time slot reservation
-            timeSlotDocRef = await addDoc(collection(db, 'bookedTimeSlots'), {
-                shopId: shop.id,
-                date: selectedDate,
-                time: selectedTime,
-                status: 'pending',
-                createdAt: serverTimestamp(),
-                employeeId: selectedEmployee?.id || null,
-                employeeName: selectedEmployee?.name || null
-            });
-        } catch (slotError) {
-            console.error("Slot booking error:", slotError, {
-                selectedEmployee,
-                selectedDate,
-                selectedTime
-            });
-            setStatusType('error');
+        if (bookingRequestInFlight.current) return;
+        if (!bookingAdapter) {
             setBookingStatus({
                 type: 'error',
-                message: slotError.message
+                message: 'Online booking is not configured for this environment.'
             });
-            setIsLoading(false);
             return;
         }
 
-        const bookingData = {
-            shopId: shop.id,
-            shopEmail: shop.email,
-            userName,
-            userEmail,
-            userPhone,
-            selectedDate,
-            selectedServices,
-            customService,
-            selectedTime,
-            totalPrice,
-            status: 'pending',
-            timeSlotId: timeSlotDocRef.id,
-            createdAt: new Date().toISOString(),
-            employeeId: selectedEmployee?.id || null,
-            employeeName: selectedEmployee?.name || null
-        };
+        bookingRequestInFlight.current = true;
+        setIsLoading(true);
+        setBookingStatus('');
 
         try {
-            bookingData.employeeId = selectedEmployee?.id || null;
-            bookingData.employeeName = selectedEmployee?.name || null;
-            const response = await fetch('${process.env.REACT_APP_CLOUD_FUNCTIONS_URL}/createBooking', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(bookingData),
+            const response = await bookingAdapter.create({
+                shop,
+                selectedServices,
+                selectedDate,
+                selectedTime,
+                userName,
+                userEmail,
+                userPhone,
+                selectedEmployee
             });
-
-            const responseData = await response.json();
-
-            if (response.ok) {
-                const bookingId = responseData.bookingId;
-
-                // Update both the booking document and time slot
-                const batch = writeBatch(db);
-
-                // Update time slot
-                const timeSlotRef = doc(db, 'bookedTimeSlots', timeSlotDocRef.id);
-                batch.update(timeSlotRef, {
-                    status: 'booked',
-                    bookingId: bookingId,
-                    employeeId: selectedEmployee?.id || null,
-                    employeeName: selectedEmployee?.name || null
-                });
-
-                // Update booking document directly
-                const bookingRef = doc(db, 'bookings', bookingId);
-                batch.update(bookingRef, {
-                    employeeId: selectedEmployee?.id || null,
-                    employeeName: selectedEmployee?.name || null
-                });
-
-                // Commit both updates
-                await batch.commit();
-
-                // Create notification document
-                try {
-                    const formattedDate = format(new Date(selectedDate), 'MMM dd, yyyy');
-
-                    const employeeInfo = selectedEmployee ? ` with ${selectedEmployee.name}` : '';
-
-                    await addDoc(collection(db, 'notifications'), {
-                        type: 'new_booking',
-                        shopId: shop.id,
-                        userEmail: userEmail,
-                        customerName: userName,
-                        title: 'New Booking',
-                        message: `New booking from ${userName} for ${formattedDate} at ${selectedTime}${employeeInfo}`,
-                        appointmentDate: selectedDate,
-                        appointmentTime: selectedTime,
-                        services: selectedServices.map(s => s.name).join(', '),
-                        totalPrice: totalPrice,
-                        createdAt: serverTimestamp(),
-                        read: false,
-                        bookingId: bookingId,
-                        status: 'pending',
-                        employeeId: selectedEmployee?.id || null,
-                        employeeName: selectedEmployee?.name || null
-                    });
-
-                    console.log('Notification created successfully for booking:', bookingId);
-                } catch (notificationError) {
-                    console.error('Error creating notification:', notificationError);
-                    // Continue with booking success even if notification fails
-                }
-
-                setStatusType('success');
-                setBookingStatus({
-                    type: 'success',
-                    message: t.bookingSuccessful,
-                    bookingId: bookingId
-                });
-                resetForm();
-            } else {
-                // If booking failed, delete the time slot reservation
-                await deleteDoc(doc(db, 'bookedTimeSlots', timeSlotDocRef.id));
-
-                setStatusType('error');
-                setBookingStatus({
-                    type: 'error',
-                    message: t.bookingFailed
-                });
-            }
+            setBookingStatus({
+                type: 'success',
+                message: t.bookingSuccessful,
+                bookingId: response.booking.bookingId
+            });
+            resetForm();
         } catch (error) {
-            // If there's an error, clean up the time slot reservation
-            if (timeSlotDocRef) {
-                await deleteDoc(doc(db, 'bookedTimeSlots', timeSlotDocRef.id));
-            }
-
-            console.error('Error booking appointment:', error);
-            setBookingStatus(`${t.errorOccurred} ${error.message}`);
+            console.error('Booking v2 command failed:', error?.code || 'unknown-error');
+            setBookingStatus({
+                type: 'error',
+                message: bookingErrorMessage(error, t)
+            });
         } finally {
+            bookingRequestInFlight.current = false;
             setIsLoading(false);
         }
     };
@@ -433,7 +299,7 @@ const BookNow = () => {
         setUserPhone('');
         setSelectedDate('');
         setSelectedServices([]);
-        setCustomService('');
+        setSelectedEmployee(null);
         setSelectedTime('');
         setStep(1);
     };
@@ -449,8 +315,8 @@ const BookNow = () => {
         // Add employee schedule check
         if (selectedEmployee) {
             const hour = parseInt(time.split(':')[0]);
-            const dayOfWeek = new Date(selectedDate).toLocaleDateString('en-US', {weekday: 'long'});
-            if (!selectedEmployee.schedule[dayOfWeek]?.includes(hour)) {
+            const dayOfWeek = weekdayForCivilDate(selectedDate);
+            if (selectedEmployee.schedule && !selectedEmployee.schedule[dayOfWeek]?.includes(hour)) {
                 return false;
             }
         }
@@ -470,26 +336,9 @@ const BookNow = () => {
     }, [shop]);
 
     useEffect(() => {
-        const fetchShopData = async () => {
-            try {
-                const shopDoc = await getDoc(doc(db, 'barberShops', shopId));
-                if (shopDoc.exists()) {
-                    setShop({id: shopDoc.id, ...shopDoc.data()});
-                }
-            } catch (error) {
-                console.error('Error fetching shop data:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchShopData();
-    }, [shopId]);
-
-    useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (user) {
-                setUserEmail(user.email);  // Pre-populate email
+                setUserEmail(user.email || '');  // Anonymous demo users have no email claim.
                 setUserName(user.displayName || '');  // Pre-populate name if available
 
                 // Fetch user document to get phone number
@@ -510,88 +359,6 @@ const BookNow = () => {
         return () => unsubscribe();
     }, []);
 
-    // const handleServiceChange = (e) => {
-    //     const { value, checked } = e.target;
-    //     if (checked) {
-    //         setSelectedServices([...selectedServices, value]);
-    //     } else {
-    //         setSelectedServices(selectedServices.filter(service => service !== value));
-    //     }
-    // };
-
-    // const handleServiceChange = (e) => {
-    //     const selectedService = shop.services.find(service => service.name === e.target.value);
-    //     if (selectedService && !selectedServices.some(s => s.name === selectedService.name)) {
-    //         setSelectedServices([...selectedServices, selectedService]);
-    //     }
-    // };
-    //
-    // const removeService = (serviceName, e) => {
-    //     e.preventDefault();
-    //     setSelectedServices(selectedServices.filter(service => service.name !== serviceName));
-    // };
-    //
-    // const totalPrice = useMemo(() => {
-    //     return selectedServices.reduce((sum, service) => sum + parseFloat(service.price), 0).toFixed(2);
-    // }, [selectedServices]);
-    //
-    // const handleBooking = async (e) => {
-    //     e.preventDefault();
-    //     if (!userName || !userEmail || !selectedDate || selectedServices.length === 0 || !selectedTime) {
-    //         setBookingStatus(t.fillAllFields);
-    //         return;
-    //     }
-    //
-    //     setIsLoading(true);
-    //     setBookingStatus('');
-    //
-    //     const bookingData = {
-    //         shopId,
-    //         shopEmail: shop.email, // Make sure this is correctly set
-    //         userName,
-    //         userEmail,
-    //         userPhone,
-    //         selectedDate,
-    //         selectedServices,
-    //         customService,
-    //         selectedTime
-    //     };
-    //
-    //     console.log('Sending booking data:', bookingData); // Log the data being sent
-    //
-    //     try {
-    //         const response = await fetch('${process.env.REACT_APP_CLOUD_FUNCTIONS_URL}/createBooking', {
-    //             method: 'POST',
-    //             headers: {
-    //                 'Content-Type': 'application/json',
-    //             },
-    //             body: JSON.stringify(bookingData),
-    //         });
-    //
-    //         const responseData = await response.json();
-    //
-    //         if (response.ok) {
-    //             setBookingStatus(`${t.bookingSuccessful} Booking ID: ${responseData.bookingId}`);
-    //             // Reset form fields
-    //             setUserName('');
-    //             setUserEmail('');
-    //             setUserPhone('');
-    //             setSelectedDate('');
-    //             setSelectedServices([]);
-    //             setCustomService('');
-    //             setSelectedTime('');
-    //         } else {
-    //             console.error('Booking failed:', responseData.error);
-    //             setBookingStatus(`${t.bookingFailed} ${responseData.error || ''}`);
-    //         }
-    //     } catch (error) {
-    //         console.error('Error booking appointment:', error);
-    //         setBookingStatus(`${t.errorOccurred} ${error.message}`);
-    //     } finally {
-    //         setIsLoading(false);
-    //     }
-    // };
-
     if (loading) {
         return <div className="flex justify-center items-center h-screen">Loading...</div>;
     }
@@ -599,8 +366,6 @@ const BookNow = () => {
     if (!shop) {
         return <div className="text-center py-4">Shop not found.</div>;
     }
-
-    const availableTimeSlots = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
 
     const translations = {
         en: {
@@ -627,9 +392,17 @@ const BookNow = () => {
             availability: "Availability",
             closed: "Closed",
             fillAllFields: "Please fill in all required fields and select at least one service.",
-            bookingSuccessful: "Booking successful! Confirmation emails have been sent.",
+            bookingSuccessful: "Booking successful! Your appointment has been saved.",
             bookingFailed: "Booking failed. Please try again.",
             errorOccurred: "An error occurred. Please try again.",
+            selectedServices: "Selected services",
+            next: "Continue",
+            personalDetails: "Personal details",
+            bookingSummary: "Booking summary",
+            date: "Date",
+            time: "Time",
+            processing: "Saving...",
+            confirmBooking: "Confirm booking",
             selectEmployee: "Select Your Stylist",
             noPreferenceTitle: "No Preference?",
             noPreferenceDescription: "Skip stylist selection if you don't have a preference",
@@ -664,9 +437,17 @@ const BookNow = () => {
             availability: "Müsaitlik",
             closed: "Kapalı",
             fillAllFields: "Lütfen tüm gerekli alanları doldurun ve en az bir hizmet seçin.",
-            bookingSuccessful: "Rezervasyon başarılı! Onay e-postaları gönderildi.",
+            bookingSuccessful: "Rezervasyon başarılı! Randevunuz kaydedildi.",
             bookingFailed: "Rezervasyon başarısız oldu. Lütfen tekrar deneyin.",
-            errorOccurred: "Bir hata oluştu. Lütfen tekrar deneyin."
+            errorOccurred: "Bir hata oluştu. Lütfen tekrar deneyin.",
+            selectedServices: "Seçilen hizmetler",
+            next: "Devam et",
+            personalDetails: "Kişisel bilgiler",
+            bookingSummary: "Rezervasyon özeti",
+            date: "Tarih",
+            time: "Saat",
+            processing: "Kaydediliyor...",
+            confirmBooking: "Rezervasyonu onayla"
         },
         ar: {
             loading: "جاري التحميل...",
@@ -692,9 +473,17 @@ const BookNow = () => {
             availability: "الأوقات المتاحة",
             closed: "مغلق",
             fillAllFields: "يرجى ملء جميع الحقول المطلوبة واختيار خدمة واحدة على الأقل.",
-            bookingSuccessful: "تم الحجز بنجاح! تم إرسال رسائل التأكيد عبر البريد الإلكتروني.",
+            bookingSuccessful: "تم الحجز بنجاح! تم حفظ موعدك.",
             bookingFailed: "فشل الحجز. يرجى المحاولة مرة أخرى.",
-            errorOccurred: "حدث خطأ. يرجى المحاولة مرة أخرى."
+            errorOccurred: "حدث خطأ. يرجى المحاولة مرة أخرى.",
+            selectedServices: "الخدمات المحددة",
+            next: "متابعة",
+            personalDetails: "البيانات الشخصية",
+            bookingSummary: "ملخص الحجز",
+            date: "التاريخ",
+            time: "الوقت",
+            processing: "جارٍ الحفظ...",
+            confirmBooking: "تأكيد الحجز"
         },
         de: {
             loading: "Wird geladen...",
@@ -720,9 +509,17 @@ const BookNow = () => {
             availability: "Verfügbarkeit",
             closed: "Geschlossen",
             fillAllFields: "Bitte füllen Sie alle erforderlichen Felder aus und wählen Sie mindestens einen Service.",
-            bookingSuccessful: "Buchung erfolgreich! Bestätigungs-E-Mails wurden gesendet.",
+            bookingSuccessful: "Buchung erfolgreich! Ihr Termin wurde gespeichert.",
             bookingFailed: "Buchung fehlgeschlagen. Bitte versuchen Sie es erneut.",
-            errorOccurred: "Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut."
+            errorOccurred: "Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.",
+            selectedServices: "Ausgewählte Services",
+            next: "Weiter",
+            personalDetails: "Persönliche Angaben",
+            bookingSummary: "Buchungsübersicht",
+            date: "Datum",
+            time: "Uhrzeit",
+            processing: "Wird gespeichert...",
+            confirmBooking: "Buchung bestätigen"
         }
     };
 
@@ -1117,10 +914,9 @@ const BookNow = () => {
                                                                 className="btn btn-primary btn-block mt-6"
                                                                 onClick={() => {
                                                                     setBookingStatus(null);
-                                                                    navigate('/dashboard/customers');
                                                                 }}
                                                             >
-                                                                Great! 🎉
+                                                                Done
                                                             </motion.button>
                                                         </div>
 

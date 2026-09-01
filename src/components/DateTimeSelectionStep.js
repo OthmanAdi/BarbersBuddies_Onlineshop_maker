@@ -1,6 +1,12 @@
 import React, {useState} from 'react';
 import {motion} from 'framer-motion';
 import {AlertCircle, Calendar, Clock} from 'lucide-react';
+import {
+    civilDateFromLocalDate,
+    formatCivilDate,
+    isCivilDateToday,
+    isCivilDateWithinInclusiveRange
+} from '../booking-v2/civilDatePresentation';
 
 const DateTimeSelectionStep = ({
                                    selectedDate,
@@ -17,7 +23,6 @@ const DateTimeSelectionStep = ({
                                }) => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [showError, setShowError] = useState(false);
-    const [hoveredDate, setHoveredDate] = useState(null);
 
     // Generate calendar days
     const getDaysInMonth = (date) => {
@@ -58,17 +63,13 @@ const DateTimeSelectionStep = ({
 
     const isSelectedDate = (date) => {
         if (!date || !selectedDate) return false;
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const formattedDate = `${year}-${month}-${day}`;
-        return formattedDate === selectedDate;
+        return civilDateFromLocalDate(date) === selectedDate;
     };
 
     const getDateStyle = (date) => {
         if (!date || !shop?.specialDates) return {style: '', isHoliday: false};
 
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = civilDateFromLocalDate(date);
         const commonStyles = 'relative overflow-hidden';
 
         // First check exact date match
@@ -78,15 +79,14 @@ const DateTimeSelectionStep = ({
         }
 
         // Then check if date falls within any ranges
-        const currentDate = date.getTime();
         for (const [startDateStr, data] of Object.entries(shop.specialDates)) {
             if (data.endDate) {
-                const startDate = new Date(startDateStr).getTime();
-                const endDate = new Date(data.endDate).getTime();
-
-                // Check if current date is within range
-                if (currentDate >= startDate && currentDate <= endDate) {
-                    return getStyleForType(data.type, commonStyles);
+                try {
+                    if (isCivilDateWithinInclusiveRange(dateStr, startDateStr, data.endDate)) {
+                        return getStyleForType(data.type, commonStyles);
+                    }
+                } catch {
+                    // Ignore malformed legacy special-date entries rather than shifting them through UTC.
                 }
             }
         }
@@ -96,11 +96,11 @@ const DateTimeSelectionStep = ({
 
     // Add this with other function definitions
     const isTimeSlotPast = (time) => {
-        if (!selectedDate || !isToday(new Date(selectedDate))) return false;
+        if (!selectedDate || !isCivilDateToday(selectedDate)) return false;
         const [hour, minute] = time.split(':').map(Number);
         const now = new Date();
         const slotTime = new Date();
-        slotTime.setHours(hour, minute);
+        slotTime.setHours(hour, minute, 0, 0);
         return now.getTime() > slotTime.getTime() - 15 * 60000;
     };
 
@@ -196,10 +196,7 @@ const DateTimeSelectionStep = ({
                                                     isHoliday: false
                                                 };
                                                 if (dateStyle.isHoliday) return;
-                                                const year = date.getFullYear();
-                                                const month = String(date.getMonth() + 1).padStart(2, '0');
-                                                const day = String(date.getDate()).padStart(2, '0');
-                                                setSelectedDate(`${year}-${month}-${day}`);
+                                                setSelectedDate(civilDateFromLocalDate(date));
                                             }}
                                             disabled={isPastDate(date) || dateStyle.isHoliday}
                                             className={`
@@ -318,7 +315,7 @@ const DateTimeSelectionStep = ({
                                     <div className="flex items-center gap-2">
                                         <Calendar className="w-5 h-5"/>
                                         <span className="font-medium">
-                                            {new Date(selectedDate).toLocaleDateString('en-US', {
+                                            {formatCivilDate(selectedDate, 'en-US', {
                                                 weekday: 'long',
                                                 year: 'numeric',
                                                 month: 'long',
