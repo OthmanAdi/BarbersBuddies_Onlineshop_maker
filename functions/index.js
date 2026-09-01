@@ -2,6 +2,13 @@ const functions = require('firebase-functions');
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
 const { shopNameTriggers } = require('./triggers');
+const { createBookingV2: createBookingV2Command } = require('./src/booking/create');
+const {
+    cancelBookingV2: cancelBookingV2Command,
+    rescheduleBookingV2: rescheduleBookingV2Command
+} = require('./src/booking/mutations');
+const { createBookingHttpHandlers } = require('./src/booking/http');
+const { withBookingV2Runtime } = require('./src/booking/runtime');
 
 admin.initializeApp();
 
@@ -12,11 +19,20 @@ const mailgun = new Mailgun(formData);
 // Use Firebase Functions config for secrets
 // Set with: firebase functions:config:set mailgun.key="xxx" mailgun.domain="xxx"
 const mailgunConfig = functions.config().mailgun || {};
-const mg = mailgun.client({
-    username: 'api',
-    key: mailgunConfig.key || process.env.MAILGUN_API_KEY,
-    url: 'https://api.eu.mailgun.net'
-});
+const mailgunApiKey = mailgunConfig.key || process.env.MAILGUN_API_KEY;
+const mg = mailgunApiKey
+    ? mailgun.client({
+        username: 'api',
+        key: mailgunApiKey,
+        url: 'https://api.eu.mailgun.net'
+    })
+    : {
+        messages: {
+            async create() {
+                throw new Error('Mailgun is not configured for this runtime');
+            }
+        }
+    };
 
 const DOMAIN = mailgunConfig.domain || process.env.MAILGUN_DOMAIN || 'barbersbuddies.com';
 
@@ -26,6 +42,35 @@ const ALLOWED_ORIGINS = [
     'https://www.barbersbuddies.com',
     'http://localhost:3000'  // For development
 ];
+
+const bookingV2Commands = {
+    create: withBookingV2Runtime((input) => createBookingV2Command({
+        ...input,
+        db: admin.firestore(),
+        admin
+    })),
+    cancel: withBookingV2Runtime((input) => cancelBookingV2Command({
+        ...input,
+        db: admin.firestore(),
+        admin
+    })),
+    reschedule: withBookingV2Runtime((input) => rescheduleBookingV2Command({
+        ...input,
+        db: admin.firestore(),
+        admin
+    }))
+};
+
+const bookingV2Handlers = createBookingHttpHandlers({
+    allowedOrigins: ALLOWED_ORIGINS,
+    verifyIdToken: (token) => admin.auth().verifyIdToken(token),
+    commands: bookingV2Commands,
+    logger: functions.logger
+});
+
+exports.createBookingV2 = functions.https.onRequest(bookingV2Handlers.createBookingV2);
+exports.cancelBookingV2 = functions.https.onRequest(bookingV2Handlers.cancelBookingV2);
+exports.rescheduleBookingV2 = functions.https.onRequest(bookingV2Handlers.rescheduleBookingV2);
 
 const setCorsHeaders = (req, res) => {
     const origin = req.headers.origin;
@@ -977,6 +1022,12 @@ exports.onStatusChange = functions.firestore
     .onUpdate(async (change, context) => {
         const newData = change.after.data();
         const previousData = change.before.data();
+
+        // Booking v2 owns notification delivery through its durable outbox.
+        // Never duplicate those effects through the legacy status trigger.
+        if (Number.isInteger(newData.schemaVersion) && newData.schemaVersion >= 2) {
+            return null;
+        }
 
         // Only proceed if status changed
         if (newData.status === previousData.status) {

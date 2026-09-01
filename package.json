@@ -70,6 +70,7 @@
     "test": "react-scripts test",
     "test:booking-api": "react-scripts test src/api/bookingCommands.test.js --watchAll=false --runInBand",
     "test:booking:unit": "npm --prefix functions run test:unit",
+    "test:booking:emulator": "npm --prefix functions run test:emulator",
     "test:rules": "node --test test/firestore-rules.test.js",
     "test:firestore-rules": "powershell.exe -NoProfile -File scripts/test-firestore-rules.ps1",
     "emulators:start": "firebase emulators:start --project demo-barbersbuddies --only auth,firestore,functions",

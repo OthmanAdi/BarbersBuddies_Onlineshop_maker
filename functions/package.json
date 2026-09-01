@@ -5,8 +5,9 @@
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
-    "test": "node --test",
-    "test:unit": "node --test test/booking/domain.test.js test/booking/time.test.js",
+    "test": "npm run test:unit",
+    "test:unit": "node --test test/booking/domain.test.js test/booking/time.test.js test/booking/http.test.js test/booking/runtime.test.js test/booking/index.integration.test.js",
+    "test:emulator": "node --test test/booking/create.emulator.test.js test/booking/mutations.emulator.test.js",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
   },
