@@ -5,13 +5,18 @@
 const config = require('../config');
 const { getAvatarUrl } = require('../utils/images');
 const { generateTimestamp } = require('../utils/dates');
-const { randomName, nameToEmail, randomPhone, generateId } = require('../utils/random');
+const { randomName, randomPhone } = require('../utils/random');
+
+const ownerAccount = config.demoAccounts.owner;
+const customerAccount = config.demoAccounts.customer;
 
 // Demo accounts (main accounts for testing)
 const demoUsers = [
   {
     id: 'demo-owner-uid',
-    ...config.demoAccounts.owner,
+    email: ownerAccount.email,
+    displayName: ownerAccount.displayName,
+    userType: ownerAccount.userType,
     photoURL: getAvatarUrl('demo-owner', 'men'),
     phoneNumber: '+4915123456789',
     createdAt: generateTimestamp(-30),
@@ -24,7 +29,9 @@ const demoUsers = [
   },
   {
     id: 'demo-customer-uid',
-    ...config.demoAccounts.customer,
+    email: customerAccount.email,
+    displayName: customerAccount.displayName,
+    userType: customerAccount.userType,
     photoURL: getAvatarUrl('demo-customer', 'men'),
     phoneNumber: '+4915198765432',
     createdAt: generateTimestamp(-20),
@@ -48,8 +55,7 @@ const generateShopOwners = () => {
     const name = randomName();
     owners.push({
       id: `shop-owner-${i + 1}-uid`,
-      email: nameToEmail(name),
-      password: `ShopOwner${i + 1}2026!`,
+      email: `shop-owner-${i + 1}@barbersbuddies.invalid`,
       displayName: name,
       userType: 'shop-owner',
       photoURL: getAvatarUrl(i + 100, 'men'),
@@ -80,7 +86,7 @@ const generateCustomers = (count = 50) => {
     const gender = Math.random() > 0.3 ? 'men' : 'women';
     customers.push({
       id: `customer-${i + 1}-uid`,
-      email: nameToEmail(name),
+      email: `customer-${i + 1}@barbersbuddies.invalid`,
       displayName: name,
       userType: 'customer',
       photoURL: getAvatarUrl(i + 200, gender),

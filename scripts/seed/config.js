@@ -1,20 +1,48 @@
 /**
  * Seed Configuration
- * Central configuration for the demo data seed system
+ * Central configuration for the emulator-only demo data seed system.
  */
 
+const crypto = require('crypto');
+
+const readDemoEmail = (environmentKey, fallback) => {
+  const email = (process.env[environmentKey] || fallback).trim().toLowerCase();
+
+  // Demo identities must never be routable, even when explicitly overridden.
+  if (!/^[^\s@]+@[^\s@]+\.invalid$/i.test(email)) {
+    throw new Error(`${environmentKey} must be a non-routable .invalid email address`);
+  }
+
+  return email;
+};
+
+const readDemoPassword = environmentKey => {
+  const override = process.env[environmentKey];
+
+  if (override !== undefined) {
+    if (override.length < 12) {
+      throw new Error(`${environmentKey} must contain at least 12 characters`);
+    }
+
+    return override;
+  }
+
+  // A new password is generated each time this seed process starts.
+  return crypto.randomBytes(24).toString('base64url');
+};
+
 module.exports = {
-  // Demo account credentials (these will be created in Firebase Auth)
+  // These identities exist only in the local Firebase Auth emulator.
   demoAccounts: {
     owner: {
-      email: 'demo-owner@barbersbuddies.com',
-      password: 'DemoOwner2026!',
+      email: readDemoEmail('SEED_DEMO_OWNER_EMAIL', 'owner@barbersbuddies.invalid'),
+      password: readDemoPassword('SEED_DEMO_OWNER_PASSWORD'),
       displayName: 'Demo Shop Owner',
       userType: 'shop-owner'
     },
     customer: {
-      email: 'demo-customer@barbersbuddies.com',
-      password: 'DemoCustomer2026!',
+      email: readDemoEmail('SEED_DEMO_CUSTOMER_EMAIL', 'customer@barbersbuddies.invalid'),
+      password: readDemoPassword('SEED_DEMO_CUSTOMER_PASSWORD'),
       displayName: 'Demo Customer',
       userType: 'customer'
     }
@@ -34,8 +62,8 @@ module.exports = {
 
   // Date ranges (relative to today)
   dateRanges: {
-    pastDays: 5,      // Jan 1-5 for past appointments
-    futureDays: 7     // Jan 7-13 for future appointments
+    pastDays: 5,
+    futureDays: 7
   },
 
   // Booking status distribution (percentages)

@@ -10,16 +10,17 @@
  * - 50+ notifications
  *
  * Usage:
- *   npm run seed        - Seed demo data
- *   npm run seed:clean  - Remove all demo data
+ *   Start the Firebase Auth and Firestore emulators first, then run:
+ *   npm run seed        - Seed emulator demo data
+ *   npm run seed:clean  - Remove emulator demo data
  *
  * Requirements:
- *   - Firebase Admin SDK credentials (serviceAccountKey.json)
- *   - Node.js 16+
+ *   - FIREBASE_AUTH_EMULATOR_HOST and FIRESTORE_EMULATOR_HOST
+ *   - SEED_FIREBASE_PROJECT_ID beginning with "demo-"
+ *   - Node.js 20+
  */
 
 const admin = require('firebase-admin');
-const path = require('path');
 
 // Data generators
 const { demoUsers, generateShopOwners, generateCustomers } = require('./data/users');
@@ -30,22 +31,74 @@ const { generateDemoShopConversations } = require('./data/messages');
 const { generateShopNotifications } = require('./data/notifications');
 const config = require('./config');
 
-// Initialize Firebase Admin
-const initializeFirebase = () => {
-  const serviceAccountPath = path.join(__dirname, '../../serviceAccountKey.json');
+const parseLocalEmulatorHost = (name, value) => {
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
 
-  try {
-    const serviceAccount = require(serviceAccountPath);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
-    console.log('✅ Firebase Admin initialized');
-    return admin.firestore();
-  } catch (error) {
-    console.error('❌ Failed to initialize Firebase Admin');
-    console.error('   Make sure serviceAccountKey.json exists in the project root');
-    console.error('   Download it from Firebase Console > Project Settings > Service Accounts');
-    process.exit(1);
+  const match = value.match(/^(localhost|127\.0\.0\.1|\[::1\]):(\d{1,5})$/);
+  const port = match ? Number(match[2]) : 0;
+
+  if (!match || port < 1 || port > 65535) {
+    throw new Error(`${name} must point to a local emulator as host:port`);
+  }
+
+  return value;
+};
+
+const validateEmulatorEnvironment = (env = process.env) => {
+  parseLocalEmulatorHost('FIREBASE_AUTH_EMULATOR_HOST', env.FIREBASE_AUTH_EMULATOR_HOST);
+  parseLocalEmulatorHost('FIRESTORE_EMULATOR_HOST', env.FIRESTORE_EMULATOR_HOST);
+
+  const projectId = env.SEED_FIREBASE_PROJECT_ID;
+  if (!projectId || !projectId.startsWith('demo-')) {
+    throw new Error('SEED_FIREBASE_PROJECT_ID must begin with "demo-"');
+  }
+
+  return { projectId };
+};
+
+// Initialize Firebase Admin without any production credentials.
+const initializeFirebase = () => {
+  const { projectId } = validateEmulatorEnvironment();
+
+  if (admin.apps.length === 0) {
+    admin.initializeApp({ projectId });
+  } else if (admin.app().options.projectId !== projectId) {
+    throw new Error('Firebase Admin was already initialized for a different project');
+  }
+
+  console.log(`✅ Firebase Admin initialized for local demo project ${projectId}`);
+  return admin.firestore();
+};
+
+const upsertDemoAuthUsers = async auth => {
+  const accounts = [
+    { uid: demoUsers[0].id, ...config.demoAccounts.owner },
+    { uid: demoUsers[1].id, ...config.demoAccounts.customer }
+  ];
+
+  for (const account of accounts) {
+    const userRecord = {
+      email: account.email,
+      password: account.password,
+      displayName: account.displayName,
+      emailVerified: true,
+      disabled: false
+    };
+
+    try {
+      await auth.getUser(account.uid);
+      await auth.updateUser(account.uid, userRecord);
+      console.log(`   ✓ Auth user updated: ${account.email}`);
+    } catch (error) {
+      if (error.code !== 'auth/user-not-found') {
+        throw error;
+      }
+
+      await auth.createUser({ uid: account.uid, ...userRecord });
+      console.log(`   ✓ Auth user created: ${account.email}`);
+    }
   }
 };
 
@@ -86,25 +139,8 @@ const seed = async () => {
     // ========================================
     console.log('👤 Creating users...');
 
-    // Create demo accounts in Firebase Auth
-    for (const user of demoUsers) {
-      try {
-        await auth.createUser({
-          uid: user.id,
-          email: user.email,
-          password: user.password,
-          displayName: user.displayName,
-          emailVerified: true
-        });
-        console.log(`   ✓ Auth user created: ${user.email}`);
-      } catch (e) {
-        if (e.code === 'auth/uid-already-exists' || e.code === 'auth/email-already-exists') {
-          console.log(`   ⚠ Auth user exists: ${user.email}`);
-        } else {
-          throw e;
-        }
-      }
-    }
+    // Create or refresh demo accounts so the credentials printed below are valid.
+    await upsertDemoAuthUsers(auth);
 
     // Generate additional users
     const shopOwners = generateShopOwners();
@@ -112,10 +148,7 @@ const seed = async () => {
 
     // Write user documents to Firestore
     const allUsers = [...demoUsers, ...shopOwners, ...customers];
-    await batchWrite(db, 'users', allUsers.map(u => {
-      const { password, ...userData } = u;
-      return userData;
-    }));
+    await batchWrite(db, 'users', allUsers);
 
     // ========================================
     // 2. CREATE SHOPS
@@ -329,10 +362,19 @@ const clean = async () => {
 };
 
 // CLI handling
-const command = process.argv[2];
+if (require.main === module) {
+  const command = process.argv[2];
+  const operation = command === 'clean' ? clean() : seed();
 
-if (command === 'clean') {
-  clean();
-} else {
-  seed();
+  operation.catch(error => {
+    console.error('\n❌ Seed operation failed:', error.message);
+    process.exitCode = 1;
+  });
 }
+
+module.exports = {
+  initializeFirebase,
+  parseLocalEmulatorHost,
+  upsertDemoAuthUsers,
+  validateEmulatorEnvironment
+};
