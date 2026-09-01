@@ -7,7 +7,9 @@ const ERROR_MESSAGES = Object.freeze({
     DEMO_ACCESS_BUSY: 'Another local demo persona is being prepared.',
     DEMO_AUTH_FAILED: 'The local demo identity could not be prepared.',
     DEMO_PROFILE_FAILED: 'The local demo profile could not be prepared.',
-    DEMO_PROFILE_CONFLICT: 'The current local identity belongs to another profile.'
+    DEMO_PROFILE_CONFLICT: 'The current local identity belongs to another profile.',
+    DEMO_FIXTURE_FAILED: 'The local demo workspace could not be prepared.',
+    DEMO_FIXTURE_CONFLICT: 'The local demo workspace belongs to another fixture.'
 });
 
 export class DemoAccessError extends Error {
@@ -100,6 +102,7 @@ export const createDemoAccessController = ({
     getDoc,
     setDoc,
     serverTimestamp,
+    provisionPersonaFixture = async () => null,
     notify = () => undefined
 }) => {
     const enterAnonymously = requireFunction(signInAnonymously);
@@ -109,6 +112,7 @@ export const createDemoAccessController = ({
     const readDocument = requireFunction(getDoc);
     const writeDocument = requireFunction(setDoc);
     const createServerTimestamp = requireFunction(serverTimestamp);
+    const preparePersonaFixture = requireFunction(provisionPersonaFixture);
     const notifyPersonaReady = requireFunction(notify);
     let activeEntry = null;
 
@@ -146,6 +150,17 @@ export const createDemoAccessController = ({
                 });
             }
 
+            let fixture = null;
+            try {
+                fixture = await preparePersonaFixture({persona, user});
+            } catch (error) {
+                if (error?.code === 'DEMO_FIXTURE_CONFLICT') {
+                    fail('DEMO_FIXTURE_CONFLICT');
+                }
+                if (error instanceof DemoAccessError) throw error;
+                fail('DEMO_FIXTURE_FAILED');
+            }
+
             try {
                 notifyPersonaReady({
                     personaId: persona.id,
@@ -159,7 +174,8 @@ export const createDemoAccessController = ({
                 personaId: persona.id,
                 userId: user.uid,
                 userType: persona.profile.userType,
-                destination: persona.destination
+                destination: persona.destination,
+                ...(fixture?.shopId ? {shopId: fixture.shopId} : {})
             });
         } catch (error) {
             await bestEffortSignOut(auth, leaveSession);

@@ -66,6 +66,10 @@ describe('demo persona registry', () => {
             id: 'professional',
             label: 'Professional',
             destination: '/account',
+            fixture: {
+                kind: 'professional-shop',
+                version: 1
+            },
             profile: {
                 email: 'professional@barbersbuddies.invalid',
                 userType: 'shop-owner',
@@ -74,6 +78,7 @@ describe('demo persona registry', () => {
         });
         expect(Object.isFrozen(persona)).toBe(true);
         expect(Object.isFrozen(persona.profile)).toBe(true);
+        expect(Object.isFrozen(persona.fixture)).toBe(true);
         expect(Object.keys(persona.profile)).not.toContain('password');
         expect(listDemoPersonas()).toEqual([persona]);
         expect(getDemoPersona('administrator')).toBeNull();
@@ -177,6 +182,56 @@ describe('demo access controller', () => {
             lastUpdated: timestamp
         }, {merge: true});
         expect(dependencies.setDoc.mock.calls[0][1]).not.toHaveProperty('customFixtureState');
+    });
+
+    test('prepares the optional persona fixture only after the profile write', async () => {
+        const provisionPersonaFixture = jest.fn(async () => ({
+            shopId: 'demo-professional-demo-user-1',
+            created: true
+        }));
+        const {controller, dependencies, user} = setup({provisionPersonaFixture});
+
+        await expect(controller.enter('professional')).resolves.toEqual({
+            personaId: 'professional',
+            userId: user.uid,
+            userType: 'shop-owner',
+            destination: '/account',
+            shopId: 'demo-professional-demo-user-1'
+        });
+
+        expect(provisionPersonaFixture).toHaveBeenCalledWith({
+            persona: getDemoPersona(PROFESSIONAL_DEMO_PERSONA_ID),
+            user
+        });
+        expect(dependencies.setDoc.mock.invocationCallOrder[0]).toBeLessThan(
+            provisionPersonaFixture.mock.invocationCallOrder[0]
+        );
+        expect(dependencies.notify.mock.invocationCallOrder[0]).toBeGreaterThan(
+            provisionPersonaFixture.mock.invocationCallOrder[0]
+        );
+    });
+
+    test.each([
+        ['conflicts', {code: 'DEMO_FIXTURE_CONFLICT'}, 'DEMO_FIXTURE_CONFLICT'],
+        ['sanitizes failures', new Error('raw fixture secret'), 'DEMO_FIXTURE_FAILED']
+    ])('%s from persona fixture provisioning and signs out', async (_label, failure, code) => {
+        const provisionPersonaFixture = jest.fn(async () => {
+            throw failure;
+        });
+        const {controller, dependencies} = setup({provisionPersonaFixture});
+
+        let receivedError;
+        try {
+            await controller.enter('professional');
+        } catch (error) {
+            receivedError = error;
+        }
+
+        expect(receivedError).toBeInstanceOf(DemoAccessError);
+        expect(receivedError.code).toBe(code);
+        expect(receivedError.message).not.toMatch(/raw|secret/i);
+        expect(dependencies.signOut).toHaveBeenCalledWith(dependencies.auth);
+        expect(dependencies.notify).not.toHaveBeenCalled();
     });
 
     test('coalesces rapid repeat entry into one Auth and Firestore operation', async () => {

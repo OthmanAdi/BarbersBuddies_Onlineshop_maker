@@ -1,12 +1,18 @@
 import {isDemoAccessEnabled} from '../runtime/appRuntime';
 
 export const PROFESSIONAL_DEMO_PERSONA_ID = 'professional';
+export const PROFESSIONAL_DEMO_FIXTURE_KIND = 'professional-shop';
+export const PROFESSIONAL_DEMO_FIXTURE_VERSION = 1;
 
 const PERSONAS = Object.freeze({
     [PROFESSIONAL_DEMO_PERSONA_ID]: Object.freeze({
         id: PROFESSIONAL_DEMO_PERSONA_ID,
         label: 'Professional',
         destination: '/account',
+        fixture: Object.freeze({
+            kind: PROFESSIONAL_DEMO_FIXTURE_KIND,
+            version: PROFESSIONAL_DEMO_FIXTURE_VERSION
+        }),
         profile: Object.freeze({
             demoPersonaId: PROFESSIONAL_DEMO_PERSONA_ID,
             demoAccessVersion: 1,

@@ -1,8 +1,9 @@
 import {signInAnonymously, signOut, updateProfile} from 'firebase/auth';
-import {doc, getDoc, serverTimestamp, setDoc} from 'firebase/firestore';
+import {doc, getDoc, runTransaction, serverTimestamp, setDoc} from 'firebase/firestore';
 import {auth, db} from '../firebase';
 import {appRuntime} from '../runtime/currentAppRuntime';
 import {createDemoAccessController} from './demoAccessController';
+import {createProfessionalShopFixtureProvisioner} from './professionalShopFixture';
 
 const notify = ({personaId, userType}) => {
     if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
@@ -22,5 +23,12 @@ export const firebaseDemoAccess = createDemoAccessController({
     getDoc,
     setDoc,
     serverTimestamp,
+    provisionPersonaFixture: createProfessionalShopFixtureProvisioner({
+        runtime: appRuntime,
+        db,
+        doc,
+        runTransaction,
+        serverTimestamp
+    }),
     notify
 });
