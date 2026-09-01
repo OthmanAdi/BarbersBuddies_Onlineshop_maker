@@ -339,6 +339,41 @@ test('seven-minute service with a three-minute pre-buffer reserves conservative 
   assert.equal(occupancy[0].endAt.toMillis(), Date.parse('2026-09-07T08:00:00.000Z'));
 });
 
+test('multi-service create persists server-owned money metadata in canonical and legacy views',
+  async (t) => {
+    const shopId = await seedShop(t);
+    const result = await createBookingV2({
+      db,
+      admin,
+      payload: createIntent(shopId, '10:00', { serviceIds: ['haircut', 'detail'] }),
+      idempotencyKey: idempotencyKey('multi-service-money'),
+    });
+    const booking = (await db.collection('bookings').doc(result.booking.bookingId).get()).data();
+
+    assert.equal(booking.totalPriceMinor, 3450);
+    assert.equal(booking.currency, 'EUR');
+    assert.equal(booking.minorUnitDigits, 2);
+    assert.equal(booking.totalPrice, '34.50');
+    assert.equal(booking.durationMinutes, 37);
+    assert.equal(booking.bufferBeforeMinutes, 3);
+    assert.deepEqual(booking.services.map((service) => ({
+      id: service.id,
+      minorUnitDigits: service.minorUnitDigits,
+    })), [
+      { id: 'haircut', minorUnitDigits: 2 },
+      { id: 'detail', minorUnitDigits: 2 },
+    ]);
+    assert.deepEqual(booking.selectedServices.map((service) => ({
+      id: service.id,
+      currency: service.currency,
+      minorUnitDigits: service.minorUnitDigits,
+      price: service.price,
+    })), [
+      { id: 'haircut', currency: 'EUR', minorUnitDigits: 2, price: '25.00' },
+      { id: 'detail', currency: 'EUR', minorUnitDigits: 2, price: '9.50' },
+    ]);
+  });
+
 test('the same local slot is independent across different employees', async (t) => {
   const shopId = await seedShop(t);
   const employeeA = await createBookingV2({

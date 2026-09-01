@@ -10,6 +10,10 @@ const {
 } = require('./domain');
 const { BookingError } = require('./errors');
 const {
+  formatMinorAmount,
+  resolveCurrencyPolicy,
+} = require('./currency');
+const {
   assertWithinAvailability,
   resolveBookingInterval,
 } = require('./time');
@@ -17,7 +21,8 @@ const {
 const MAX_CUSTOMER_NAME_LENGTH = 160;
 const MAX_CUSTOMER_PHONE_LENGTH = 40;
 const MAX_SERVICE_COUNT = 20;
-const ISO_CURRENCY_PATTERN = /^[A-Z]{3}$/;
+const MAX_DATA_ARRAY_LENGTH = 10_000;
+const BLOCKED_DATA_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const IDENTIFIER_PATTERN = /^[^\u0000-\u001f/]{1,128}$/;
 
 function bookingError(code, message, httpStatus, details = {}) {
@@ -28,19 +33,102 @@ function bookingError(code, message, httpStatus, details = {}) {
   });
 }
 
-function isPlainObject(value) {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return false;
+function readPlainDataObject(value) {
+  if (value === null || typeof value !== 'object') {
+    return null;
   }
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+
+  let isArray;
+  let prototype;
+  let descriptors;
+  try {
+    isArray = Array.isArray(value);
+    prototype = Object.getPrototypeOf(value);
+    descriptors = Object.getOwnPropertyDescriptors(value);
+  } catch (error) {
+    return null;
+  }
+  if (isArray || (prototype !== Object.prototype && prototype !== null)) {
+    return null;
+  }
+
+  const copy = Object.create(null);
+  for (const key of Reflect.ownKeys(descriptors)) {
+    const descriptor = descriptors[key];
+    if (
+      typeof key !== 'string' ||
+      BLOCKED_DATA_KEYS.has(key) ||
+      descriptor.enumerable !== true ||
+      !Object.prototype.hasOwnProperty.call(descriptor, 'value')
+    ) {
+      return null;
+    }
+    Object.defineProperty(copy, key, {
+      configurable: false,
+      enumerable: true,
+      value: descriptor.value,
+      writable: false,
+    });
+  }
+  return Object.freeze(copy);
+}
+
+function readDenseDataArray(value) {
+  let isArray;
+  let prototype;
+  let descriptors;
+  try {
+    isArray = Array.isArray(value);
+    prototype = Object.getPrototypeOf(value);
+    descriptors = Object.getOwnPropertyDescriptors(value);
+  } catch (error) {
+    return null;
+  }
+  if (!isArray || prototype !== Array.prototype) {
+    return null;
+  }
+
+  const lengthDescriptor = descriptors.length;
+  if (
+    !lengthDescriptor ||
+    !Object.prototype.hasOwnProperty.call(lengthDescriptor, 'value') ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0 ||
+    lengthDescriptor.value > MAX_DATA_ARRAY_LENGTH
+  ) {
+    return null;
+  }
+  const items = new Array(lengthDescriptor.value);
+  for (const key of Reflect.ownKeys(descriptors)) {
+    if (key === 'length') {
+      continue;
+    }
+    const descriptor = descriptors[key];
+    if (
+      typeof key !== 'string' ||
+      !/^(0|[1-9]\d*)$/.test(key) ||
+      Number(key) >= items.length ||
+      descriptor.enumerable !== true ||
+      !Object.prototype.hasOwnProperty.call(descriptor, 'value')
+    ) {
+      return null;
+    }
+    items[Number(key)] = descriptor.value;
+  }
+  for (let index = 0; index < items.length; index += 1) {
+    if (!Object.prototype.hasOwnProperty.call(items, index)) {
+      return null;
+    }
+  }
+  return Object.freeze(items);
 }
 
 function requirePlainObject(value, field) {
-  if (!isPlainObject(value)) {
+  const snapshot = readPlainDataObject(value);
+  if (!snapshot) {
     throw bookingError('INVALID_ARGUMENT', `${field} must be an object`, 400, { field });
   }
-  return value;
+  return snapshot;
 }
 
 function normalizeIdentifier(value, field) {
@@ -69,17 +157,18 @@ function normalizeActor(actor) {
   if (actor === undefined || actor === null) {
     return Object.freeze({ uid: null, email: null, kind: 'guest' });
   }
-  requirePlainObject(actor, 'actor');
-  const uid = normalizeIdentifier(actor.uid, 'actor.uid');
+  const actorData = requirePlainObject(actor, 'actor');
+  const uid = normalizeIdentifier(actorData.uid, 'actor.uid');
   let email = null;
-  if (actor.email !== undefined && actor.email !== null && actor.email !== '') {
-    email = normalizeEmail(actor.email);
+  if (actorData.email !== undefined && actorData.email !== null && actorData.email !== '') {
+    email = normalizeEmail(actorData.email);
   }
   return Object.freeze({ uid, email, kind: 'authenticated' });
 }
 
 function normalizeServiceIds(value) {
-  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_SERVICE_COUNT) {
+  const serviceIds = readDenseDataArray(value);
+  if (!serviceIds || serviceIds.length === 0 || serviceIds.length > MAX_SERVICE_COUNT) {
     throw bookingError(
       'INVALID_ARGUMENT',
       `serviceIds must contain 1 to ${MAX_SERVICE_COUNT} stable service identifiers`,
@@ -89,7 +178,7 @@ function normalizeServiceIds(value) {
   }
 
   const seen = new Set();
-  return Object.freeze(value.map((serviceId, index) => {
+  return Object.freeze(serviceIds.map((serviceId, index) => {
     const normalized = normalizeIdentifier(serviceId, `serviceIds[${index}]`);
     if (seen.has(normalized)) {
       throw bookingError('INVALID_ARGUMENT', 'serviceIds must not contain duplicates', 400, {
@@ -128,15 +217,6 @@ function normalizeCreateIntent(payload, actor) {
   return Object.freeze({ actor: normalizedActor, intent });
 }
 
-function normalizeCurrency(value, field) {
-  if (typeof value !== 'string' || !ISO_CURRENCY_PATTERN.test(value)) {
-    throw bookingError('INVALID_ARGUMENT', `${field} must be an uppercase ISO currency code`, 400, {
-      field,
-    });
-  }
-  return value;
-}
-
 function normalizeNonNegativeSafeInteger(value, field, code = 'INVALID_ARGUMENT') {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw bookingError(code, `${field} must be a non-negative safe integer`, 400, { field });
@@ -150,16 +230,17 @@ function isInactive(entity) {
 }
 
 function normalizeAuthoritativeServices(shop, serviceIds) {
-  if (!Array.isArray(shop.services)) {
+  const catalog = readDenseDataArray(shop.services);
+  if (!catalog) {
     throw bookingError('SERVICE_NOT_FOUND', 'shop has no authoritative service catalog', 404, {
       field: 'services',
     });
   }
 
   const byId = new Map();
-  for (let index = 0; index < shop.services.length; index += 1) {
-    const service = shop.services[index];
-    if (!isPlainObject(service)) {
+  for (let index = 0; index < catalog.length; index += 1) {
+    const service = readPlainDataObject(catalog[index]);
+    if (!service) {
       throw bookingError('SERVICE_NOT_FOUND', 'shop service catalog is malformed', 404, {
         field: `services[${index}]`,
       });
@@ -194,7 +275,10 @@ function normalizeAuthoritativeServices(shop, serviceIds) {
       service.priceMinor,
       `services.${id}.priceMinor`,
     );
-    const currency = normalizeCurrency(service.currency, `services.${id}.currency`);
+    const currencyPolicy = resolveCurrencyPolicy(
+      service.currency,
+      `services.${id}.currency`,
+    );
     const bufferBeforeMinutes = service.bufferBeforeMinutes ?? 0;
     const bufferAfterMinutes = service.bufferAfterMinutes ?? 0;
 
@@ -205,7 +289,8 @@ function normalizeAuthoritativeServices(shop, serviceIds) {
       bufferBeforeMinutes,
       bufferAfterMinutes,
       priceMinor,
-      currency,
+      currency: currencyPolicy.currency,
+      minorUnitDigits: currencyPolicy.minorUnitDigits,
     });
   });
 
@@ -246,26 +331,29 @@ function normalizeAuthoritativeServices(shop, serviceIds) {
     bufferAfterMinutes,
     totalPriceMinor,
     currency,
+    minorUnitDigits: snapshots[0].minorUnitDigits,
   });
 }
 
 function normalizeWeeklyAvailability(value, field) {
-  if (!isPlainObject(value)) {
+  const availability = readPlainDataObject(value);
+  if (!availability) {
     throw bookingError('OUTSIDE_AVAILABILITY', `${field} must be configured`, 422, { field });
   }
-  return value;
+  return availability;
 }
 
 function dateExceptionFor(entity, localDate) {
   if (entity.dateExceptions === undefined || entity.dateExceptions === null) {
     return undefined;
   }
-  if (!isPlainObject(entity.dateExceptions)) {
+  const dateExceptions = readPlainDataObject(entity.dateExceptions);
+  if (!dateExceptions) {
     throw bookingError('OUTSIDE_AVAILABILITY', 'dateExceptions must be an object', 422, {
       field: 'dateExceptions',
     });
   }
-  return entity.dateExceptions[localDate];
+  return dateExceptions[localDate];
 }
 
 function normalizePolicy(shop, intent, actor) {
@@ -294,7 +382,8 @@ function normalizePolicy(shop, intent, actor) {
 }
 
 function normalizeEmployees(shop, intent) {
-  if (!Array.isArray(shop.employees)) {
+  const employees = readDenseDataArray(shop.employees);
+  if (!employees) {
     throw bookingError(
       'SHOP_RESOURCE_CONFIG_REQUIRED',
       'shop employee roster must be an array',
@@ -303,8 +392,9 @@ function normalizeEmployees(shop, intent) {
     );
   }
 
-  const canonicalEmployees = shop.employees.map((employee, index) => {
-    if (!isPlainObject(employee)) {
+  const canonicalEmployees = employees.map((employee, index) => {
+    const canonicalEmployee = readPlainDataObject(employee);
+    if (!canonicalEmployee) {
       throw bookingError(
         'SHOP_RESOURCE_CONFIG_REQUIRED',
         'employee roster contains a malformed entry',
@@ -314,7 +404,7 @@ function normalizeEmployees(shop, intent) {
     }
     let employeeId;
     try {
-      employeeId = normalizeIdentifier(employee.id, `employees[${index}].id`);
+      employeeId = normalizeIdentifier(canonicalEmployee.id, `employees[${index}].id`);
     } catch (error) {
       if (error instanceof BookingError) {
         throw bookingError(
@@ -326,7 +416,7 @@ function normalizeEmployees(shop, intent) {
       }
       throw error;
     }
-    if (employee.id !== employeeId) {
+    if (canonicalEmployee.id !== employeeId) {
       throw bookingError(
         'SHOP_RESOURCE_CONFIG_REQUIRED',
         'employee identifiers must be stored in canonical form',
@@ -334,7 +424,7 @@ function normalizeEmployees(shop, intent) {
         { field: `employees[${index}].id` },
       );
     }
-    return Object.freeze({ ...employee, id: employeeId });
+    return Object.freeze({ ...canonicalEmployee, id: employeeId });
   });
 
   try {
@@ -357,10 +447,11 @@ function employeeCanServe(employee, serviceIds) {
   if (employee.bookable === false || isInactive(employee)) {
     return false;
   }
-  if (!Array.isArray(employee.serviceIds)) {
+  const eligibleServiceIds = readDenseDataArray(employee.serviceIds);
+  if (!eligibleServiceIds) {
     return false;
   }
-  const eligible = new Set(employee.serviceIds);
+  const eligible = new Set(eligibleServiceIds);
   return serviceIds.every((serviceId) => eligible.has(serviceId));
 }
 
@@ -424,13 +515,17 @@ function resolveCandidateResources({ shop, intent, interval }) {
 }
 
 function resolveAuthoritativeBooking({ shopId, shop, intent, actor }) {
-  if (!isPlainObject(shop) || isInactive(shop)) {
+  const authoritativeShop = readPlainDataObject(shop);
+  if (!authoritativeShop || isInactive(authoritativeShop)) {
     throw bookingError('SHOP_NOT_FOUND', 'shop does not exist or is inactive', 404, { shopId });
   }
 
-  const ownerId = normalizeIdentifier(shop.ownerId, 'shop.ownerId');
-  const shopEmail = normalizeEmail(shop.email);
-  if (typeof shop.timeZone !== 'string' || shop.timeZone.trim().length === 0) {
+  const ownerId = normalizeIdentifier(authoritativeShop.ownerId, 'shop.ownerId');
+  const shopEmail = normalizeEmail(authoritativeShop.email);
+  if (
+    typeof authoritativeShop.timeZone !== 'string' ||
+    authoritativeShop.timeZone.trim().length === 0
+  ) {
     throw bookingError(
       'SHOP_TIMEZONE_REQUIRED',
       'shop has no authoritative IANA time zone',
@@ -438,13 +533,13 @@ function resolveAuthoritativeBooking({ shopId, shop, intent, actor }) {
       { shopId },
     );
   }
-  const service = normalizeAuthoritativeServices(shop, intent.serviceIds);
-  const policy = normalizePolicy(shop, intent, actor);
+  const service = normalizeAuthoritativeServices(authoritativeShop, intent.serviceIds);
+  const policy = normalizePolicy(authoritativeShop, intent, actor);
 
   const interval = resolveBookingInterval({
     localDate: intent.localDate,
     localStartTime: intent.localStartTime,
-    timeZone: shop.timeZone,
+    timeZone: authoritativeShop.timeZone,
     durationMinutes: service.durationMinutes,
     bufferBeforeMinutes: service.bufferBeforeMinutes,
     bufferAfterMinutes: service.bufferAfterMinutes,
@@ -467,13 +562,13 @@ function resolveAuthoritativeBooking({ shopId, shop, intent, actor }) {
   assertWithinAvailability({
     interval,
     weeklyAvailability: normalizeWeeklyAvailability(
-      shop.weeklyAvailability,
+      authoritativeShop.weeklyAvailability,
       'shop.weeklyAvailability',
     ),
-    dateException: dateExceptionFor(shop, intent.localDate),
+    dateException: dateExceptionFor(authoritativeShop, intent.localDate),
   });
 
-  const resources = resolveCandidateResources({ shop, intent, interval });
+  const resources = resolveCandidateResources({ shop: authoritativeShop, intent, interval });
   const buckets = createOccupancyBuckets({
     localDate: interval.localDate,
     localStartTime: interval.localStartTime,
@@ -487,7 +582,7 @@ function resolveAuthoritativeBooking({ shopId, shop, intent, actor }) {
       id: shopId,
       ownerId,
       email: shopEmail,
-      name: normalizeBoundedText(shop.name, 'shop.name', 160),
+      name: normalizeBoundedText(authoritativeShop.name, 'shop.name', 160),
     }),
     service,
     policy,
@@ -495,12 +590,6 @@ function resolveAuthoritativeBooking({ shopId, shop, intent, actor }) {
     resources,
     buckets,
   });
-}
-
-function formatMinorAmount(priceMinor) {
-  const whole = Math.floor(priceMinor / 100);
-  const fraction = String(priceMinor % 100).padStart(2, '0');
-  return `${whole}.${fraction}`;
 }
 
 module.exports = {

@@ -80,7 +80,8 @@ function buildBookingDocument({
     duration: String(snapshot.durationMinutes),
     priceMinor: snapshot.priceMinor,
     currency: snapshot.currency,
-    price: formatMinorAmount(snapshot.priceMinor),
+    minorUnitDigits: snapshot.minorUnitDigits,
+    price: formatMinorAmount(snapshot.priceMinor, snapshot.currency),
   }));
 
   return {
@@ -105,6 +106,7 @@ function buildBookingDocument({
     services: service.snapshots.map((snapshot) => ({ ...snapshot })),
     totalPriceMinor: service.totalPriceMinor,
     currency: service.currency,
+    minorUnitDigits: service.minorUnitDigits,
     resourceId: resource.resourceId,
     resource: {
       id: resource.resourceId,
@@ -137,7 +139,7 @@ function buildBookingDocument({
     selectedDate: interval.localDate,
     selectedTime: interval.localStartTime,
     selectedServices,
-    totalPrice: formatMinorAmount(service.totalPriceMinor),
+    totalPrice: formatMinorAmount(service.totalPriceMinor, service.currency),
   };
 }
 

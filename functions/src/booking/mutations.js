@@ -728,6 +728,7 @@ function buildRescheduledBooking({ booking, authoritative, commandId, authorizat
     services: service.snapshots.map((snapshot) => ({ ...snapshot })),
     totalPriceMinor: service.totalPriceMinor,
     currency: service.currency,
+    minorUnitDigits: service.minorUnitDigits,
     resourceId: resource.resourceId,
     resource: {
       id: resource.resourceId,
@@ -759,9 +760,10 @@ function buildRescheduledBooking({ booking, authoritative, commandId, authorizat
       duration: String(snapshot.durationMinutes),
       priceMinor: snapshot.priceMinor,
       currency: snapshot.currency,
-      price: formatMinorAmount(snapshot.priceMinor),
+      minorUnitDigits: snapshot.minorUnitDigits,
+      price: formatMinorAmount(snapshot.priceMinor, snapshot.currency),
     })),
-    totalPrice: formatMinorAmount(service.totalPriceMinor),
+    totalPrice: formatMinorAmount(service.totalPriceMinor, service.currency),
     rescheduledAt: serverTimestamp,
     updatedAt: serverTimestamp,
   };
