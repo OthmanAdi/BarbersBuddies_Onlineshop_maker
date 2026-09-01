@@ -65,7 +65,9 @@ const PaymentMethodsStep = ({ paymentMethods, onSelect, setFormTouched, handleSt
             className="relative w-full"
         >
             <motion.button
+                type="button"
                 onClick={() => toggleMethod(method.id)}
+                aria-pressed={selectedMethods.includes(method.id)}
                 className={`
           w-full p-6 rounded-2xl border-2 transition-colors
           ${selectedMethods.includes(method.id)
@@ -136,6 +138,7 @@ const PaymentMethodsStep = ({ paymentMethods, onSelect, setFormTouched, handleSt
             <div className="flex gap-4 mb-8 justify-center">
                 {['popular', 'other'].map((category) => (
                     <motion.button
+                        type="button"
                         key={category}
                         onClick={(e) => {
                             e.preventDefault();
@@ -151,6 +154,7 @@ const PaymentMethodsStep = ({ paymentMethods, onSelect, setFormTouched, handleSt
   `}
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
+                        aria-pressed={activeCategory === category}
                     >
                         {category.charAt(0).toUpperCase() + category.slice(1)}
                     </motion.button>
@@ -174,6 +178,7 @@ const PaymentMethodsStep = ({ paymentMethods, onSelect, setFormTouched, handleSt
                 animate={{ opacity: 1 }}
             >
                 <motion.button
+                    type="button"
                     onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -186,6 +191,7 @@ const PaymentMethodsStep = ({ paymentMethods, onSelect, setFormTouched, handleSt
                 </motion.button>
 
                 <motion.button
+                    type="button"
                     onClick={validateAndProceed}
                     className={`px-8 py-3 bg-gray-900 text-white rounded-xl hover:bg-gray-800 ${
                         selectedMethods.length === 0 ? 'opacity-50 cursor-not-allowed' : ''

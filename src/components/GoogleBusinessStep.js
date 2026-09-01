@@ -1064,6 +1064,7 @@ const GoogleBusinessStep = ({onNext, onBack, shopData, tempShopId}) => {
             <div className="space-y-4">
                 <div className="flex flex-col gap-3">
                     <button
+                        type="button"
                         onClick={() => setWantsToCreate(true)}
                         className={`btn btn-lg w-full ${wantsToCreate === true ? 'btn-primary' : 'btn-outline'}`}
                         disabled={!gapiLoaded}
@@ -1082,6 +1083,7 @@ const GoogleBusinessStep = ({onNext, onBack, shopData, tempShopId}) => {
                     </button>
 
                     <button
+                        type="button"
                         onClick={() => handleStoreCreation(true, 'skip-now')}
                         className={`btn btn-lg w-full ${wantsToCreate === true ? 'btn-primary' : 'btn-outline'}`}
                         disabled={isCreating}
@@ -1125,12 +1127,13 @@ const GoogleBusinessStep = ({onNext, onBack, shopData, tempShopId}) => {
 
             {/* Navigation Buttons */}
             <div className="flex justify-between pt-6">
-                <button onClick={onBack} className="btn btn-outline">
+                <button type="button" onClick={onBack} className="btn btn-outline">
                     Back
                 </button>
                 <div className="space-x-2">
                     {/* This Skip button creates the store and moves to the final step */}
                     <button
+                        type="button"
                         onClick={() => handleStoreCreation(true, 'skip')}
                         className="btn btn-ghost"
                         disabled={isCreating}
@@ -1146,6 +1149,7 @@ const GoogleBusinessStep = ({onNext, onBack, shopData, tempShopId}) => {
                     </button>
                     {/* This button initiates both store creation and Google Business creation */}
                     <button
+                        type="button"
                         onClick={handlePublishClick}
                         className="btn btn-primary"
                         disabled={!gapiLoaded || !wantsToCreate || !acceptedTerms || isCreating} // Modified this line
